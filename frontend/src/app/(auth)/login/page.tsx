@@ -17,13 +17,17 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    
+    console.log('🔐 Login form submitted');
 
     const { error } = await signIn(email, password);
     
     if (error) {
+      console.error('❌ Login error:', error);
       setError(error.message);
       setLoading(false);
     } else {
+      console.log('✅ Login successful, redirecting to dashboard...');
       router.push('/dashboard');
     }
   };
