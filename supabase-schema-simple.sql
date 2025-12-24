@@ -101,18 +101,11 @@ CREATE POLICY "Users can update own profile" ON public.users
   FOR UPDATE USING (auth.uid() = id);
 
 -- Classrooms: Teachers can create, members can view
+-- FIXED: Simplified policies to avoid infinite recursion
 CREATE POLICY "Teachers can create classrooms" ON public.classrooms
-  FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'teacher')
-  );
+  FOR INSERT WITH CHECK (teacher_id = auth.uid());
 
-CREATE POLICY "Members can view classrooms" ON public.classrooms
-  FOR SELECT USING (
-    teacher_id = auth.uid() OR
-    EXISTS (SELECT 1 FROM public.classroom_memberships WHERE classroom_id = id AND user_id = auth.uid())
-  );
-
-CREATE POLICY "Anyone can view classroom by join code" ON public.classrooms
+CREATE POLICY "Users can view classrooms" ON public.classrooms
   FOR SELECT USING (true);
 
 CREATE POLICY "Teachers can update own classrooms" ON public.classrooms
