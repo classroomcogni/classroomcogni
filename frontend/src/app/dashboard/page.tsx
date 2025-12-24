@@ -76,7 +76,22 @@ export default function DashboardPage() {
     setError('');
 
     const joinCode = generateJoinCode();
-    console.log('🏫 Creating classroom:', { name: newClassName, joinCode, teacherId: user.id });
+    console.log('🏫 Creating classroom:', { name: newClassName, joinCode, teacherId: user.id, userRole: user.role });
+    
+    // First verify the user profile exists in the database
+    const { data: profileCheck, error: profileError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+    
+    console.log('👤 Profile check before create:', { profileCheck, profileError });
+    
+    if (!profileCheck) {
+      console.error('❌ User profile not found in database!');
+      setError('User profile not found. Please sign out and sign in again.');
+      return;
+    }
     
     const { data, error } = await supabase.from('classrooms').insert({
       name: newClassName,
@@ -86,12 +101,19 @@ export default function DashboardPage() {
     }).select();
 
     console.log('🏫 Create classroom result:', { data, error });
-
+    
     if (error) {
       console.error('❌ Create classroom error:', error);
-      setError(error.message);
+      console.error('❌ Error details:', JSON.stringify(error, null, 2));
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error hint:', error.hint);
+      setError(error.message || 'Failed to create classroom. Check console for details.');
+    } else if (!data || data.length === 0) {
+      console.error('❌ No data returned - likely RLS policy blocking insert');
+      setError('Permission denied. Make sure you are signed in as a teacher.');
     } else {
-      console.log('✅ Classroom created successfully');
+      console.log('✅ Classroom created successfully:', data);
       setShowCreateModal(false);
       setNewClassName('');
       setNewClassDesc('');
