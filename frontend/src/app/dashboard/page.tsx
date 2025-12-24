@@ -31,26 +31,32 @@ export default function DashboardPage() {
   const fetchClassrooms = async () => {
     if (!user) return;
 
+    console.log('📚 Fetching classrooms for user:', user.id, 'role:', user.role);
+
     if (user.role === 'teacher') {
       // Teachers see classrooms they created
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('classrooms')
         .select('*')
         .eq('teacher_id', user.id);
+      console.log('📚 Teacher classrooms result:', { data, error });
       setClassrooms(data || []);
     } else {
       // Students see classrooms they joined
-      const { data: memberships } = await supabase
+      const { data: memberships, error: membershipError } = await supabase
         .from('classroom_memberships')
         .select('classroom_id')
         .eq('user_id', user.id);
 
+      console.log('📚 Student memberships result:', { memberships, membershipError });
+
       if (memberships && memberships.length > 0) {
         const classroomIds = memberships.map(m => m.classroom_id);
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('classrooms')
           .select('*')
           .in('id', classroomIds);
+        console.log('📚 Student classrooms result:', { data, error });
         setClassrooms(data || []);
       }
     }
@@ -70,16 +76,22 @@ export default function DashboardPage() {
     setError('');
 
     const joinCode = generateJoinCode();
-    const { error } = await supabase.from('classrooms').insert({
+    console.log('🏫 Creating classroom:', { name: newClassName, joinCode, teacherId: user.id });
+    
+    const { data, error } = await supabase.from('classrooms').insert({
       name: newClassName,
       description: newClassDesc,
       join_code: joinCode,
       teacher_id: user.id,
-    });
+    }).select();
+
+    console.log('🏫 Create classroom result:', { data, error });
 
     if (error) {
+      console.error('❌ Create classroom error:', error);
       setError(error.message);
     } else {
+      console.log('✅ Classroom created successfully');
       setShowCreateModal(false);
       setNewClassName('');
       setNewClassDesc('');
