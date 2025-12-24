@@ -59,14 +59,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, role: 'student' | 'teacher', displayName: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
+    console.log('🔐 SignUp attempt:', { email, role, displayName });
+    
+    let data, error;
+    try {
+      const result = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      data = result.data;
+      error = result.error;
+      console.log('📡 Supabase signUp response:', { data, error });
+    } catch (e) {
+      console.error('❌ SignUp exception:', e);
+      throw e;
+    }
 
-    if (error) return { error };
+    if (error) {
+      console.error('❌ SignUp error:', error);
+      return { error };
+    }
 
     if (data.user) {
+      console.log('✅ User created, creating profile...', { userId: data.user.id });
       // Create user profile
       const { error: profileError } = await supabase.from('users').insert({
         id: data.user.id,
@@ -75,17 +90,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         display_name: displayName,
       });
 
-      if (profileError) return { error: profileError };
+      if (profileError) {
+        console.error('❌ Profile creation error:', profileError);
+        return { error: profileError };
+      }
+      console.log('✅ Profile created successfully');
     }
 
     return { error: null };
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    console.log('🔐 SignIn attempt:', { email });
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+    console.log('📡 SignIn response:', { data, error });
     return { error };
   };
 

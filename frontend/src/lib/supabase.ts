@@ -3,14 +3,22 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
+// DEBUG: Log configuration (remove in production)
+console.log('🔧 Supabase Config Debug:');
+console.log('  URL:', supabaseUrl ? `${supabaseUrl.substring(0, 30)}...` : 'NOT SET');
+console.log('  Key:', supabaseAnonKey ? `${supabaseAnonKey.substring(0, 20)}...` : 'NOT SET');
+console.log('  URL valid:', supabaseUrl.startsWith('https://') && supabaseUrl.includes('.supabase.co'));
+
 // Create a single supabase client for the browser
 // Handle missing credentials gracefully for build time
 let supabase: SupabaseClient;
 
-if (supabaseUrl && supabaseAnonKey) {
+if (supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('https://')) {
+  console.log('✅ Creating Supabase client with real credentials');
   supabase = createClient(supabaseUrl, supabaseAnonKey);
 } else {
   // Create a dummy client for build time - will be replaced at runtime
+  console.warn('⚠️ Using placeholder Supabase client - check your .env.local file');
   supabase = createClient('https://placeholder.supabase.co', 'placeholder-key');
 }
 
