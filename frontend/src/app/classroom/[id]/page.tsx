@@ -86,17 +86,50 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
   }, [classroomId]);
 
   const fetchMembers = useCallback(async () => {
+    // Get all memberships for this classroom
     const { data: memberships } = await supabase
       .from('classroom_memberships')
       .select('user_id')
       .eq('classroom_id', classroomId);
 
+    // Get the classroom to find the teacher
+    const { data: classroomData } = await supabase
+      .from('classrooms')
+      .select('teacher_id')
+      .eq('id', classroomId)
+      .single();
+
+    const userIds: string[] = [];
+    
+    // Add teacher
+    if (classroomData?.teacher_id) {
+      userIds.push(classroomData.teacher_id);
+    }
+    
+    // Add students from memberships
     if (memberships && memberships.length > 0) {
-      const userIds = memberships.map(m => m.user_id);
+      memberships.forEach(m => {
+        if (!userIds.includes(m.user_id)) {
+          userIds.push(m.user_id);
+        }
+      });
+    }
+
+    if (userIds.length > 0) {
       const { data } = await supabase
         .from('users')
         .select('*')
         .in('id', userIds);
+      
+      // Update user cache with all members
+      if (data) {
+        const newCache: Record<string, User> = {};
+        data.forEach(u => {
+          newCache[u.id] = u;
+        });
+        setUserCache(prev => ({ ...prev, ...newCache }));
+      }
+      
       setMembers(data || []);
     }
   }, [classroomId]);
@@ -132,41 +165,43 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
         },
         async (payload) => {
           console.log('📨 New message received:', payload.new);
+          const newMessageId = payload.new.id;
           
-          // Check if we already have this message (from optimistic update)
+          // First, fetch the user data for this message
+          const { data: userData } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', payload.new.user_id)
+            .single();
+          
+          if (userData) {
+            setUserCache(prev => ({ ...prev, [userData.id]: userData }));
+          }
+          
+          // Update messages - replace temp message or add new one
           setMessages(prev => {
-            const exists = prev.some(m => m.id === payload.new.id);
+            // Check if this is our own message (we have a temp version)
+            const tempIndex = prev.findIndex(m => 
+              m.id.startsWith('temp-') && 
+              m.user_id === payload.new.user_id &&
+              m.content === payload.new.content
+            );
+            
+            if (tempIndex !== -1) {
+              // Replace temp message with real one
+              const updated = [...prev];
+              updated[tempIndex] = { ...payload.new, user: userData } as Message;
+              return updated;
+            }
+            
+            // Check if message already exists (avoid duplicates)
+            const exists = prev.some(m => m.id === newMessageId);
             if (exists) {
-              console.log('Message already exists, skipping');
               return prev;
             }
             
-            // Fetch user data for the message
-            supabase
-              .from('users')
-              .select('*')
-              .eq('id', payload.new.user_id)
-              .single()
-              .then(({ data: userData }) => {
-                if (userData) {
-                  setUserCache(prev => ({ ...prev, [userData.id]: userData }));
-                  // Update the message with user data
-                  setMessages(msgs => 
-                    msgs.map(m => 
-                      m.id === payload.new.id 
-                        ? { ...m, user: userData } 
-                        : m
-                    )
-                  );
-                }
-              });
-            
-            const newMsg = { 
-              ...payload.new, 
-              user: null 
-            } as Message;
-            
-            return [...prev, newMsg];
+            // Add new message from another user
+            return [...prev, { ...payload.new, user: userData } as Message];
           });
         }
       )
@@ -187,26 +222,57 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
         },
         async (payload) => {
           console.log('📎 New upload received:', payload.new);
-          // Fetch the upload with user data
-          const { data } = await supabase
-            .from('uploads')
-            .select('*, user:users(*)')
-            .eq('id', payload.new.id)
-            .single();
-          
-          if (data) {
-            setUploads(prev => [...prev, data]);
-          }
+          // Check if already exists
+          setUploads(prev => {
+            if (prev.some(u => u.id === payload.new.id)) {
+              return prev;
+            }
+            // Fetch the upload with user data
+            supabase
+              .from('uploads')
+              .select('*, user:users(*)')
+              .eq('id', payload.new.id)
+              .single()
+              .then(({ data }) => {
+                if (data) {
+                  setUploads(p => {
+                    if (p.some(u => u.id === data.id)) return p;
+                    return [...p, data];
+                  });
+                }
+              });
+            return prev;
+          });
         }
       )
       .subscribe((status) => {
         console.log('📡 Uploads realtime status:', status);
       });
 
+    // Subscribe to membership changes to update members list
+    const membersChannel = supabase
+      .channel(`classroom-${classroomId}-members`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'classroom_memberships',
+          filter: `classroom_id=eq.${classroomId}`,
+        },
+        () => {
+          console.log('👥 Membership changed, refreshing members');
+          fetchMembers();
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(messagesChannel);
       supabase.removeChannel(uploadsChannel);
+      supabase.removeChannel(membersChannel);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, classroomId]);
 
   useEffect(() => {
@@ -218,13 +284,14 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
 
     const messageContent = newMessage.trim();
     const messageChannel = activeChannel === 'general' ? 'general' : 'study-guide';
+    const tempId = `temp-${Date.now()}`;
     
     // Clear input immediately for better UX
     setNewMessage('');
 
     // Optimistic update - add message immediately with current user data
     const optimisticMessage: Message = {
-      id: `temp-${Date.now()}`,
+      id: tempId,
       classroom_id: classroomId,
       user_id: user.id,
       content: messageContent,
@@ -235,28 +302,21 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
     
     setMessages(prev => [...prev, optimisticMessage]);
 
-    // Actually send to database
-    const { data, error } = await supabase.from('messages').insert({
+    // Actually send to database (realtime will handle the update)
+    const { error } = await supabase.from('messages').insert({
       classroom_id: classroomId,
       user_id: user.id,
       content: messageContent,
       channel: messageChannel,
-    }).select('*, user:users(*)').single();
+    });
 
     if (error) {
       console.error('Error sending message:', error);
       // Remove optimistic message on error
-      setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
+      setMessages(prev => prev.filter(m => m.id !== tempId));
       setNewMessage(messageContent); // Restore the message
-      return;
     }
-
-    // Replace optimistic message with real one
-    if (data) {
-      setMessages(prev => 
-        prev.map(m => m.id === optimisticMessage.id ? data : m)
-      );
-    }
+    // Note: We don't need to update here - realtime subscription will replace the temp message
   };
 
   const submitUpload = async () => {
@@ -363,25 +423,30 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
 
           {/* Members */}
           <div className="text-gray-400 text-xs font-semibold px-2 py-2 mt-4">
-            Members ({members.length + 1})
+            Members ({members.length})
           </div>
           <div className="space-y-1">
-            {/* Teacher */}
-            <div className="px-2 py-1 text-gray-400 text-sm flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-              {user.role === 'teacher' ? user.display_name + ' (you)' : 'Teacher'}
-            </div>
-            {/* Students */}
-            {members.map((member) => (
-              <div
-                key={member.id}
-                className="px-2 py-1 text-gray-400 text-sm flex items-center gap-2"
-              >
-                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                {member.display_name}
-                {member.id === user.id && ' (you)'}
-              </div>
-            ))}
+            {/* Teachers first, then students */}
+            {members
+              .sort((a, b) => {
+                // Teachers first
+                if (a.role === 'teacher' && b.role !== 'teacher') return -1;
+                if (a.role !== 'teacher' && b.role === 'teacher') return 1;
+                return a.display_name.localeCompare(b.display_name);
+              })
+              .map((member) => (
+                <div
+                  key={member.id}
+                  className="px-2 py-1 text-gray-400 text-sm flex items-center gap-2"
+                >
+                  <span className={`w-2 h-2 rounded-full ${member.role === 'teacher' ? 'bg-yellow-500' : 'bg-green-500'}`}></span>
+                  <span className="truncate">
+                    {member.display_name}
+                    {member.id === user?.id && ' (you)'}
+                    {member.role === 'teacher' && ' 👨‍🏫'}
+                  </span>
+                </div>
+              ))}
           </div>
         </div>
       </div>
