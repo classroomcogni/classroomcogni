@@ -15,8 +15,8 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
-frontend/.env.local
 ai-service/.env
+!*.example
 
 # Python
 __pycache__/
