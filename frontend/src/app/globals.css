@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+:root {
+  --background: #1a1d21;
+  --foreground: #d1d2d3;
+  --sidebar-bg: #19171d;
+  --channel-active: #1164a3;
+  --message-hover: #222529;
+  --border-color: #3f4147;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Slack-style scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #565856;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #717271;
+}

@@ -1,0 +1,7 @@
+# AI Service Dependencies
+sentence-transformers==2.2.2
+scikit-learn==1.3.2
+numpy==1.26.2
+supabase==2.0.3
+python-dotenv==1.0.0
+requests==2.31.0
