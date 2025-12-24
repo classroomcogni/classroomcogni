@@ -1,17 +1,11 @@
--- ClassroomCogni Database Schema
--- Run this in your Supabase SQL Editor to set up the database
+-- ClassroomCogni Database Schema (Simple Version)
+-- Use this if you have trouble enabling the pgvector extension
+-- This version stores embeddings as JSON arrays instead of VECTOR type
 -- 
--- IMPORTANT: Before running this script:
--- 1. Go to Database > Extensions in your Supabase dashboard
--- 2. Search for "vector" and enable it
--- 3. Then run this script
+-- Run this in your Supabase SQL Editor to set up the database
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- Enable pgvector extension for AI embeddings
--- If this fails, enable it manually in Database > Extensions first
-CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Users table (extends Supabase auth.users)
 CREATE TABLE public.users (
@@ -75,18 +69,15 @@ CREATE TABLE public.ai_insights (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Embeddings for uploads (used by AI service for clustering)
--- Uses pgvector for efficient similarity search
+-- Embeddings for uploads (SIMPLE VERSION - stores as JSONB instead of VECTOR)
+-- This works without pgvector extension but is less efficient for large datasets
 CREATE TABLE public.upload_embeddings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   upload_id UUID NOT NULL REFERENCES public.uploads(id) ON DELETE CASCADE,
-  embedding VECTOR(384), -- MiniLM-L6-v2 produces 384-dimensional embeddings
+  embedding JSONB NOT NULL, -- Stores embedding as JSON array
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(upload_id)
 );
-
--- Create index for vector similarity search
-CREATE INDEX ON public.upload_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- Enable Row Level Security
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
@@ -138,8 +129,6 @@ CREATE POLICY "Members can view memberships" ON public.classroom_memberships
   );
 
 -- Messages: Members can read/write in their classrooms
--- PRIVACY NOTE: Teachers can only see messages in classrooms they own for moderation
--- but the AI never exposes individual messages to teachers
 CREATE POLICY "Members can send messages" ON public.messages
   FOR INSERT WITH CHECK (
     EXISTS (SELECT 1 FROM public.classroom_memberships WHERE classroom_id = messages.classroom_id AND user_id = auth.uid())
@@ -166,14 +155,13 @@ CREATE POLICY "Members can view uploads" ON public.uploads
   );
 
 -- AI Insights: All classroom members can view
--- PRIVACY NOTE: These are aggregated insights only - no individual student data
 CREATE POLICY "Members can view insights" ON public.ai_insights
   FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.classroom_memberships WHERE classroom_id = ai_insights.classroom_id AND user_id = auth.uid())
     OR EXISTS (SELECT 1 FROM public.classrooms WHERE id = ai_insights.classroom_id AND teacher_id = auth.uid())
   );
 
--- Upload embeddings: Service role only (AI service uses service key)
+-- Upload embeddings: Service role only
 CREATE POLICY "Service can manage embeddings" ON public.upload_embeddings
   FOR ALL USING (true);
 

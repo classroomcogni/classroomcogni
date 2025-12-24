@@ -34,7 +34,18 @@ cd classroomcogni
    - **Region**: Choose closest to you
 4. Click **"Create new project"** and wait ~2 minutes
 
-### 2.2 Run the Database Schema
+### 2.2 Enable the Vector Extension
+
+The AI service uses pgvector for embeddings. Enable it first:
+
+1. In your Supabase dashboard, go to **Database** → **Extensions**
+2. Search for **"vector"**
+3. Click the toggle to **enable** it
+4. Wait a few seconds for it to activate
+
+**Alternative:** If you have trouble with pgvector, use `supabase-schema-simple.sql` instead (stores embeddings as JSON).
+
+### 2.3 Run the Database Schema
 
 1. In your Supabase dashboard, click **"SQL Editor"** in the left sidebar
 2. Click **"New query"**
@@ -44,7 +55,9 @@ cd classroomcogni
 
 You should see "Success. No rows returned" - this means the tables were created.
 
-### 2.3 Get Your API Keys
+**Troubleshooting:** If you get an error about "type vector does not exist", make sure you enabled the vector extension in step 2.2, or use `supabase-schema-simple.sql` instead.
+
+### 2.4 Get Your API Keys
 
 1. Go to **Settings** → **API** in the Supabase dashboard
 2. Copy these values (you'll need them soon):
@@ -52,7 +65,7 @@ You should see "Success. No rows returned" - this means the tables were created.
    - **anon public** key (under "Project API keys")
    - **service_role** key (under "Project API keys") - ⚠️ Keep this secret!
 
-### 2.4 Enable Email Auth (Optional but Recommended)
+### 2.5 Enable Email Auth (Optional but Recommended)
 
 1. Go to **Authentication** → **Providers**
 2. Ensure **Email** is enabled
