@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, use } from 'react';
+import { useEffect, useState, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { supabase, Classroom, Message, Upload, AIInsight, User } from '@/lib/supabase';
@@ -23,6 +23,8 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadContent, setUploadContent] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Cache for user data to avoid repeated fetches
+  const [userCache, setUserCache] = useState<Record<string, User>>({});
 
   useEffect(() => {
     if (!loading && !user) {
@@ -30,86 +32,60 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
     }
   }, [user, loading, router]);
 
-  useEffect(() => {
-    if (user && classroomId) {
-      fetchClassroom();
-      fetchMessages();
-      fetchUploads();
-      fetchInsights();
-      fetchMembers();
-
-      // Subscribe to real-time messages
-      const channel = supabase
-        .channel(`classroom-${classroomId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `classroom_id=eq.${classroomId}`,
-          },
-          async (payload) => {
-            // Fetch the user info for the new message
-            const { data: userData } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', payload.new.user_id)
-              .single();
-            
-            const newMsg = { ...payload.new, user: userData } as Message;
-            setMessages((prev) => [...prev, newMsg]);
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
-  }, [user, classroomId]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const fetchClassroom = async () => {
+  // Memoized fetch functions
+  const fetchClassroom = useCallback(async () => {
     const { data } = await supabase
       .from('classrooms')
       .select('*')
       .eq('id', classroomId)
       .single();
     setClassroom(data);
-  };
+  }, [classroomId]);
 
-  const fetchMessages = async () => {
-    const { data } = await supabase
+  const fetchMessages = useCallback(async () => {
+    const { data, error } = await supabase
       .from('messages')
       .select('*, user:users(*)')
       .eq('classroom_id', classroomId)
       .order('created_at', { ascending: true });
-    setMessages(data || []);
-  };
+    
+    if (error) {
+      console.error('Error fetching messages:', error);
+      return;
+    }
+    
+    // Update user cache with fetched user data
+    if (data) {
+      const newCache: Record<string, User> = { ...userCache };
+      data.forEach((msg: Message) => {
+        if (msg.user) {
+          newCache[msg.user_id] = msg.user;
+        }
+      });
+      setUserCache(newCache);
+      setMessages(data);
+    }
+  }, [classroomId, userCache]);
 
-  const fetchUploads = async () => {
+  const fetchUploads = useCallback(async () => {
     const { data } = await supabase
       .from('uploads')
       .select('*, user:users(*)')
       .eq('classroom_id', classroomId)
       .order('created_at', { ascending: true });
     setUploads(data || []);
-  };
+  }, [classroomId]);
 
-  const fetchInsights = async () => {
+  const fetchInsights = useCallback(async () => {
     const { data } = await supabase
       .from('ai_insights')
       .select('*')
       .eq('classroom_id', classroomId)
       .order('created_at', { ascending: false });
     setInsights(data || []);
-  };
+  }, [classroomId]);
 
-  const fetchMembers = async () => {
+  const fetchMembers = useCallback(async () => {
     const { data: memberships } = await supabase
       .from('classroom_memberships')
       .select('user_id')
@@ -123,19 +99,164 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
         .in('id', userIds);
       setMembers(data || []);
     }
-  };
+  }, [classroomId]);
+
+  // Initial data fetch
+  useEffect(() => {
+    if (user && classroomId) {
+      fetchClassroom();
+      fetchMessages();
+      fetchUploads();
+      fetchInsights();
+      fetchMembers();
+      // Add current user to cache
+      setUserCache(prev => ({ ...prev, [user.id]: user }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, classroomId]);
+
+  // Real-time subscriptions (separate effect to avoid re-subscribing)
+  useEffect(() => {
+    if (!user || !classroomId) return;
+
+    // Subscribe to real-time messages
+    const messagesChannel = supabase
+      .channel(`classroom-${classroomId}-messages`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `classroom_id=eq.${classroomId}`,
+        },
+        async (payload) => {
+          console.log('📨 New message received:', payload.new);
+          
+          // Check if we already have this message (from optimistic update)
+          setMessages(prev => {
+            const exists = prev.some(m => m.id === payload.new.id);
+            if (exists) {
+              console.log('Message already exists, skipping');
+              return prev;
+            }
+            
+            // Fetch user data for the message
+            supabase
+              .from('users')
+              .select('*')
+              .eq('id', payload.new.user_id)
+              .single()
+              .then(({ data: userData }) => {
+                if (userData) {
+                  setUserCache(prev => ({ ...prev, [userData.id]: userData }));
+                  // Update the message with user data
+                  setMessages(msgs => 
+                    msgs.map(m => 
+                      m.id === payload.new.id 
+                        ? { ...m, user: userData } 
+                        : m
+                    )
+                  );
+                }
+              });
+            
+            const newMsg = { 
+              ...payload.new, 
+              user: null 
+            } as Message;
+            
+            return [...prev, newMsg];
+          });
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Messages realtime status:', status);
+      });
+
+    // Subscribe to uploads
+    const uploadsChannel = supabase
+      .channel(`classroom-${classroomId}-uploads`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'uploads',
+          filter: `classroom_id=eq.${classroomId}`,
+        },
+        async (payload) => {
+          console.log('📎 New upload received:', payload.new);
+          // Fetch the upload with user data
+          const { data } = await supabase
+            .from('uploads')
+            .select('*, user:users(*)')
+            .eq('id', payload.new.id)
+            .single();
+          
+          if (data) {
+            setUploads(prev => [...prev, data]);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Uploads realtime status:', status);
+      });
+
+    return () => {
+      supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(uploadsChannel);
+    };
+  }, [user?.id, classroomId]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const sendMessage = async () => {
     if (!user || !newMessage.trim()) return;
 
-    await supabase.from('messages').insert({
+    const messageContent = newMessage.trim();
+    const messageChannel = activeChannel === 'general' ? 'general' : 'study-guide';
+    
+    // Clear input immediately for better UX
+    setNewMessage('');
+
+    // Optimistic update - add message immediately with current user data
+    const optimisticMessage: Message = {
+      id: `temp-${Date.now()}`,
       classroom_id: classroomId,
       user_id: user.id,
-      content: newMessage,
-      channel: activeChannel === 'general' ? 'general' : 'study-guide',
-    });
+      content: messageContent,
+      channel: messageChannel,
+      created_at: new Date().toISOString(),
+      user: user, // Include full user object
+    };
+    
+    setMessages(prev => [...prev, optimisticMessage]);
 
-    setNewMessage('');
+    // Actually send to database
+    const { data, error } = await supabase.from('messages').insert({
+      classroom_id: classroomId,
+      user_id: user.id,
+      content: messageContent,
+      channel: messageChannel,
+    }).select('*, user:users(*)').single();
+
+    if (error) {
+      console.error('Error sending message:', error);
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
+      setNewMessage(messageContent); // Restore the message
+      return;
+    }
+
+    // Replace optimistic message with real one
+    if (data) {
+      setMessages(prev => 
+        prev.map(m => m.id === optimisticMessage.id ? data : m)
+      );
+    }
   };
 
   const submitUpload = async () => {
@@ -397,26 +518,36 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
               {/* Chat in study-guide channel */}
               <div className="border-t border-[#3f4147] pt-4 mt-4">
                 <h4 className="text-gray-400 text-sm mb-3">Discussion</h4>
-                {filteredMessages.map((message) => (
-                  <div key={message.id} className="flex gap-3 mb-4 hover:bg-[#222529] p-2 rounded">
-                    <div className="w-9 h-9 bg-[#4a154b] rounded flex items-center justify-center flex-shrink-0">
-                      <span className="text-white text-sm">
-                        {message.user?.display_name?.[0]?.toUpperCase() || '?'}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-white font-semibold">
-                          {message.user?.display_name || 'Unknown'}
-                        </span>
-                        <span className="text-gray-500 text-xs">
-                          {formatTime(message.created_at)}
+                {filteredMessages.map((message) => {
+                  const isOwnMessage = message.user_id === user?.id;
+                  const displayName = message.user?.display_name || user?.display_name || 'Unknown';
+                  
+                  return (
+                    <div 
+                      key={message.id} 
+                      className={`flex gap-3 mb-4 p-2 rounded ${isOwnMessage ? 'flex-row-reverse' : ''}`}
+                    >
+                      <div className={`w-9 h-9 rounded flex items-center justify-center flex-shrink-0 ${isOwnMessage ? 'bg-[#2eb67d]' : 'bg-[#4a154b]'}`}>
+                        <span className="text-white text-sm">
+                          {displayName[0]?.toUpperCase() || '?'}
                         </span>
                       </div>
-                      <p className="text-gray-300">{message.content}</p>
+                      <div className={`flex-1 min-w-0 ${isOwnMessage ? 'text-right' : ''}`}>
+                        <div className={`flex items-baseline gap-2 ${isOwnMessage ? 'justify-end' : ''}`}>
+                          <span className="text-white font-semibold">
+                            {isOwnMessage ? 'You' : displayName}
+                          </span>
+                          <span className="text-gray-500 text-xs">
+                            {formatTime(message.created_at)}
+                          </span>
+                        </div>
+                        <div className={`inline-block rounded-lg px-3 py-2 mt-1 ${isOwnMessage ? 'bg-[#2eb67d] text-white' : 'bg-[#222529] text-gray-300'}`}>
+                          {message.content}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ) : (
@@ -429,50 +560,58 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                   if ('content' in item && !('title' in item)) {
                     // It's a message
                     const message = item as Message;
+                    const isOwnMessage = message.user_id === user?.id;
+                    const displayName = message.user?.display_name || (isOwnMessage ? user?.display_name : 'Unknown') || 'Unknown';
+                    
                     return (
                       <div
                         key={`msg-${message.id}`}
-                        className="flex gap-3 mb-4 hover:bg-[#222529] p-2 rounded"
+                        className={`flex gap-3 mb-4 p-2 rounded ${isOwnMessage ? 'flex-row-reverse' : ''}`}
                       >
-                        <div className="w-9 h-9 bg-[#4a154b] rounded flex items-center justify-center flex-shrink-0">
+                        <div className={`w-9 h-9 rounded flex items-center justify-center flex-shrink-0 ${isOwnMessage ? 'bg-[#2eb67d]' : 'bg-[#4a154b]'}`}>
                           <span className="text-white text-sm">
-                            {message.user?.display_name?.[0]?.toUpperCase() || '?'}
+                            {displayName[0]?.toUpperCase() || '?'}
                           </span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline gap-2">
+                        <div className={`max-w-[70%] ${isOwnMessage ? 'text-right' : ''}`}>
+                          <div className={`flex items-baseline gap-2 ${isOwnMessage ? 'justify-end' : ''}`}>
                             <span className="text-white font-semibold">
-                              {message.user?.display_name || 'Unknown'}
+                              {isOwnMessage ? 'You' : displayName}
                             </span>
                             <span className="text-gray-500 text-xs">
                               {formatTime(message.created_at)}
                             </span>
                           </div>
-                          <p className="text-gray-300">{message.content}</p>
+                          <div className={`inline-block rounded-lg px-3 py-2 mt-1 ${isOwnMessage ? 'bg-[#2eb67d] text-white' : 'bg-[#222529] text-gray-300'}`}>
+                            {message.content}
+                          </div>
                         </div>
                       </div>
                     );
                   } else {
                     // It's an upload
                     const upload = item as Upload;
+                    const isOwnUpload = upload.user_id === user?.id;
+                    const displayName = upload.user?.display_name || (isOwnUpload ? user?.display_name : 'Unknown') || 'Unknown';
+                    
                     return (
                       <div
                         key={`upload-${upload.id}`}
-                        className="flex gap-3 mb-4 hover:bg-[#222529] p-2 rounded"
+                        className={`flex gap-3 mb-4 p-2 rounded ${isOwnUpload ? 'flex-row-reverse' : ''}`}
                       >
-                        <div className="w-9 h-9 bg-[#2eb67d] rounded flex items-center justify-center flex-shrink-0">
+                        <div className="w-9 h-9 bg-[#e01e5a] rounded flex items-center justify-center flex-shrink-0">
                           <span className="text-white text-sm">📄</span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline gap-2">
+                        <div className={`max-w-[70%] ${isOwnUpload ? 'text-right' : ''}`}>
+                          <div className={`flex items-baseline gap-2 ${isOwnUpload ? 'justify-end' : ''}`}>
                             <span className="text-white font-semibold">
-                              {upload.user?.display_name || 'Unknown'}
+                              {isOwnUpload ? 'You' : displayName}
                             </span>
                             <span className="text-gray-500 text-xs">
                               {formatTime(upload.created_at)}
                             </span>
                           </div>
-                          <div className="bg-[#222529] border border-[#3f4147] rounded-lg p-3 mt-1">
+                          <div className="bg-[#222529] border border-[#3f4147] rounded-lg p-3 mt-1 text-left">
                             <div className="flex items-center gap-2 mb-2">
                               <span className="text-2xl">📝</span>
                               <span className="text-white font-medium">{upload.title}</span>
