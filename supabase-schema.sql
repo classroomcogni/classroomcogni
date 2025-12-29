@@ -99,9 +99,10 @@ ALTER TABLE public.upload_embeddings ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
 
--- Users: Can read own profile, insert on signup
-CREATE POLICY "Users can view own profile" ON public.users
-  FOR SELECT USING (auth.uid() = id);
+-- Users: Can read all profiles (needed to see other users' names in chat)
+-- Privacy note: Only display_name and role are shown in UI, not email
+CREATE POLICY "Users can view all profiles" ON public.users
+  FOR SELECT USING (true);
 
 CREATE POLICY "Users can insert own profile" ON public.users
   FOR INSERT WITH CHECK (auth.uid() = id);
