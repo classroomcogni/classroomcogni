@@ -108,12 +108,13 @@ The app will be available at `http://localhost:3000`
 
 ### 3. Set Up AI Service
 
+**macOS/Linux:**
 ```bash
 cd ai-service
 
 # Create virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -121,6 +122,25 @@ pip install -r requirements.txt
 # Configure environment
 cp .env.example .env
 # Edit .env with your Supabase SERVICE key and Gemini API key
+```
+
+**Windows (PowerShell):**
+```powershell
+cd ai-service
+
+# Create virtual environment
+python -m venv venv
+
+# Activate it (if you get an execution policy error, run: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser)
+.\venv\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment
+copy .env.example .env
+# Edit .env with notepad or your preferred editor
+notepad .env
 ```
 
 ### 4. Get Google Gemini API Key
@@ -140,8 +160,8 @@ cp .env.example .env
 # Process all classrooms
 python ai_service.py
 
-# Or process a specific classroom
-python ai_service.py <classroom_id>
+# Or process a specific classroom (replace with actual ID)
+python ai_service.py your-classroom-id-here
 ```
 
 ## 👩‍🎓 Student Experience

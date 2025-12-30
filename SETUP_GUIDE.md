@@ -125,6 +125,7 @@ The AI service uses Google's Gemini API for text generation.
 
 ### 4.2 Set Up Python Environment
 
+**macOS/Linux:**
 ```bash
 cd ai-service
 
@@ -132,10 +133,24 @@ cd ai-service
 python -m venv venv
 
 # Activate it
-# On macOS/Linux:
 source venv/bin/activate
-# On Windows:
-venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+**Windows (PowerShell):**
+```powershell
+cd ai-service
+
+# Create virtual environment
+python -m venv venv
+
+# If you get an execution policy error, run this first:
+# Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# Activate it
+.\venv\Scripts\Activate.ps1
 
 # Install dependencies
 pip install -r requirements.txt
@@ -143,9 +158,16 @@ pip install -r requirements.txt
 
 ### 4.3 Configure AI Service Environment
 
+**macOS/Linux:**
 ```bash
 cp .env.example .env
 nano .env  # or your preferred editor
+```
+
+**Windows (PowerShell):**
+```powershell
+copy .env.example .env
+notepad .env
 ```
 
 Update with your credentials:
