@@ -45,10 +45,10 @@ This is the core innovation of ClassroomCogni:
 | Backend/Auth/DB | Supabase |
 | AI Service | Python (background service) |
 | Embeddings | sentence-transformers/all-MiniLM-L6-v2 |
-| LLM | Ollama (Mistral or LLaMA 3 8B) |
+| LLM | Google Gemini API (gemini-1.5-flash) |
 | Styling | Tailwind CSS |
 
-**No paid APIs or services required!**
+**Requires a free Google Gemini API key** - Get yours at [Google AI Studio](https://aistudio.google.com/app/apikey)
 
 ## 📁 Project Structure
 
@@ -80,7 +80,7 @@ classroomcogni/
 - Node.js 18+
 - Python 3.9+
 - Supabase account (free tier works)
-- Ollama installed locally
+- Google Gemini API key (free tier available)
 
 ### 1. Set Up Supabase
 
@@ -120,20 +120,19 @@ pip install -r requirements.txt
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your Supabase SERVICE key and Ollama settings
+# Edit .env with your Supabase SERVICE key and Gemini API key
 ```
 
-### 4. Install Ollama
+### 4. Get Google Gemini API Key
 
-```bash
-# macOS/Linux
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Pull the model
-ollama pull mistral
-# or
-ollama pull llama3:8b
-```
+1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Sign in with your Google account
+3. Click "Create API Key"
+4. Copy the key and add it to your `ai-service/.env` file:
+   ```
+   GEMINI_API_KEY=your_api_key_here
+   GEMINI_MODEL=gemini-1.5-flash
+   ```
 
 ### 5. Run the AI Service
 
@@ -171,7 +170,7 @@ python ai_service.py <classroom_id>
 1. **Fetch** all uploaded notes for a classroom
 2. **Generate embeddings** using MiniLM (384-dimensional vectors)
 3. **Cluster** notes into logical units using K-means
-4. **Generate** a study guide for each unit using Ollama
+4. **Generate** a study guide for each unit using Google Gemini
 
 ### Confusion Analysis
 

@@ -86,11 +86,7 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
   }, [classroomId]);
 
   const fetchMembers = useCallback(async () => {
-    // Get all memberships for this classroom
-    const { data: memberships } = await supabase
-      .from('classroom_memberships')
-      .select('user_id')
-      .eq('classroom_id', classroomId);
+    const userIds = new Set<string>();
 
     // Get the classroom to find the teacher
     const { data: classroomData } = await supabase
@@ -99,27 +95,47 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
       .eq('id', classroomId)
       .single();
 
-    const userIds: string[] = [];
-    
     // Add teacher
     if (classroomData?.teacher_id) {
-      userIds.push(classroomData.teacher_id);
-    }
-    
-    // Add students from memberships
-    if (memberships && memberships.length > 0) {
-      memberships.forEach(m => {
-        if (!userIds.includes(m.user_id)) {
-          userIds.push(m.user_id);
-        }
-      });
+      userIds.add(classroomData.teacher_id);
     }
 
-    if (userIds.length > 0) {
+    // Get memberships - note: RLS may limit visibility for students
+    const { data: memberships } = await supabase
+      .from('classroom_memberships')
+      .select('user_id')
+      .eq('classroom_id', classroomId);
+    
+    if (memberships) {
+      memberships.forEach(m => userIds.add(m.user_id));
+    }
+
+    // Also get unique users from messages (workaround for RLS limitations)
+    // This ensures we see all active participants even if membership query is limited
+    const { data: messageUsers } = await supabase
+      .from('messages')
+      .select('user_id')
+      .eq('classroom_id', classroomId);
+    
+    if (messageUsers) {
+      messageUsers.forEach(m => userIds.add(m.user_id));
+    }
+
+    // Get unique users from uploads as well
+    const { data: uploadUsers } = await supabase
+      .from('uploads')
+      .select('user_id')
+      .eq('classroom_id', classroomId);
+    
+    if (uploadUsers) {
+      uploadUsers.forEach(u => userIds.add(u.user_id));
+    }
+
+    if (userIds.size > 0) {
       const { data } = await supabase
         .from('users')
         .select('*')
-        .in('id', userIds);
+        .in('id', Array.from(userIds));
       
       // Update user cache with all members
       if (data) {
@@ -426,8 +442,8 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
             Members ({members.length})
           </div>
           <div className="space-y-1">
-            {/* Teachers first, then students */}
-            {members
+            {/* Teachers first, then students - deduplicate by id */}
+            {Array.from(new Map(members.map(m => [m.id, m])).values())
               .sort((a, b) => {
                 // Teachers first
                 if (a.role === 'teacher' && b.role !== 'teacher') return -1;
@@ -583,13 +599,13 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
               {/* Chat in study-guide channel */}
               <div className="border-t border-[#3f4147] pt-4 mt-4">
                 <h4 className="text-gray-400 text-sm mb-3">Discussion</h4>
-                {filteredMessages.map((message) => {
+                {filteredMessages.map((message, index) => {
                   const isOwnMessage = message.user_id === user?.id;
                   const displayName = message.user?.display_name || user?.display_name || 'Unknown';
                   
                   return (
                     <div 
-                      key={message.id} 
+                      key={`study-msg-${message.id}-${index}`} 
                       className={`flex gap-3 mb-4 p-2 rounded ${isOwnMessage ? 'flex-row-reverse' : ''}`}
                     >
                       <div className={`w-9 h-9 rounded flex items-center justify-center flex-shrink-0 ${isOwnMessage ? 'bg-[#2eb67d]' : 'bg-[#4a154b]'}`}>
@@ -621,7 +637,7 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
               {/* Combined feed of messages and uploads */}
               {[...filteredMessages, ...uploads]
                 .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-                .map((item) => {
+                .map((item, index) => {
                   if ('content' in item && !('title' in item)) {
                     // It's a message
                     const message = item as Message;
@@ -630,7 +646,7 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                     
                     return (
                       <div
-                        key={`msg-${message.id}`}
+                        key={`msg-${message.id}-${index}`}
                         className={`flex gap-3 mb-4 p-2 rounded ${isOwnMessage ? 'flex-row-reverse' : ''}`}
                       >
                         <div className={`w-9 h-9 rounded flex items-center justify-center flex-shrink-0 ${isOwnMessage ? 'bg-[#2eb67d]' : 'bg-[#4a154b]'}`}>
@@ -661,7 +677,7 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                     
                     return (
                       <div
-                        key={`upload-${upload.id}`}
+                        key={`upload-${upload.id}-${index}`}
                         className={`flex gap-3 mb-4 p-2 rounded ${isOwnUpload ? 'flex-row-reverse' : ''}`}
                       >
                         <div className="w-9 h-9 bg-[#e01e5a] rounded flex items-center justify-center flex-shrink-0">

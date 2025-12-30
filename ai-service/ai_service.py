@@ -6,7 +6,7 @@ This service runs as a background process that:
 1. Fetches uploaded notes from Supabase
 2. Generates embeddings using sentence-transformers
 3. Clusters notes into logical units
-4. Generates study guides using Ollama (Mistral/LLaMA)
+4. Generates study guides using Google Gemini API
 5. Analyzes chat for confusion patterns (aggregated, anonymous)
 6. Stores results back to Supabase
 
@@ -22,7 +22,6 @@ Run: python ai_service.py [classroom_id]
 import os
 import sys
 import json
-import requests
 from datetime import datetime
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
@@ -34,14 +33,19 @@ load_dotenv()
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_SERVICE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
 
-# Ollama configuration
-OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'mistral')
+# Gemini configuration
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
 
 # Check for required environment variables
 if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
     print("Error: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
     print("Copy .env.example to .env and fill in your credentials")
+    sys.exit(1)
+
+if not GEMINI_API_KEY:
+    print("Error: GEMINI_API_KEY must be set")
+    print("Get your API key from https://aistudio.google.com/app/apikey")
     sys.exit(1)
 
 # Initialize Supabase client
@@ -130,7 +134,7 @@ Titles: {', '.join(titles)}
 Respond with ONLY the unit name, nothing else."""
 
     try:
-        response = call_ollama(prompt)
+        response = call_gemini(prompt)
         return response.strip().strip('"').strip("'")[:50]  # Limit length
     except Exception as e:
         print(f"Error generating unit name: {e}")
@@ -149,7 +153,7 @@ def generate_study_guide(uploads: List[Dict], unit_name: str) -> str:
         f"**{u['title']}**\n{u['content']}" for u in uploads
     ])
     
-    # Truncate if too long (Ollama context limit)
+    # Truncate if too long (Gemini context limit)
     if len(combined_content) > 8000:
         combined_content = combined_content[:8000] + "\n\n[Content truncated...]"
     
@@ -169,7 +173,7 @@ Format the guide clearly with headers and bullet points. Keep it concise but com
 Write in a friendly, encouraging tone suitable for high school students."""
 
     try:
-        return call_ollama(prompt)
+        return call_gemini(prompt)
     except Exception as e:
         print(f"Error generating study guide: {e}")
         return f"Study guide generation failed. Please try again later.\n\nError: {str(e)}"
@@ -213,34 +217,41 @@ Only provide aggregated, anonymous insights about learning patterns.
 Keep the response concise (under 200 words)."""
 
     try:
-        return call_ollama(prompt)
+        return call_gemini(prompt)
     except Exception as e:
         print(f"Error analyzing confusion: {e}")
         return f"Confusion analysis failed: {str(e)}"
 
 
-def call_ollama(prompt: str) -> str:
-    """Call Ollama API to generate text."""
-    url = f"{OLLAMA_HOST}/api/generate"
+def call_gemini(prompt: str) -> str:
+    """Call Google Gemini API to generate text."""
+    import google.generativeai as genai
     
-    payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": 0.7,
-            "top_p": 0.9,
-        }
+    genai.configure(api_key=GEMINI_API_KEY)
+    
+    generation_config = {
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "max_output_tokens": 4096,
     }
     
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+    ]
+    
     try:
-        response = requests.post(url, json=payload, timeout=120)
-        response.raise_for_status()
-        return response.json()['response']
-    except requests.exceptions.ConnectionError:
-        raise Exception(f"Cannot connect to Ollama at {OLLAMA_HOST}. Is Ollama running?")
+        model = genai.GenerativeModel(
+            model_name=GEMINI_MODEL,
+            generation_config=generation_config,
+            safety_settings=safety_settings
+        )
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
-        raise Exception(f"Ollama API error: {str(e)}")
+        raise Exception(f"Gemini API error: {str(e)}")
 
 
 def store_insight(classroom_id: str, insight_type: str, content: str, unit_name: Optional[str] = None, metadata: Dict = None):
@@ -338,12 +349,14 @@ def process_all_classrooms():
 
 def main():
     """Main entry point."""
-    print("""
+    print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║           ClassroomCogni AI Service                           ║
 ║                                                               ║
 ║  This service generates study guides and analyzes learning    ║
 ║  patterns while preserving student privacy.                   ║
+║                                                               ║
+║  Powered by: Google Gemini ({GEMINI_MODEL})                   ║
 ║                                                               ║
 ║  PRIVACY: Teachers only see aggregated insights.              ║
 ║  Individual student messages are never exposed.               ║

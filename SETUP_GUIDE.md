@@ -112,38 +112,18 @@ The app will be available at **http://localhost:3000**
 
 ## Step 4: Set Up the AI Service
 
-### 4.1 Install Ollama
+### 4.1 Get a Google Gemini API Key
 
-Ollama runs LLMs locally on your machine.
+The AI service uses Google's Gemini API for text generation.
 
-**macOS/Linux:**
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-```
+1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Sign in with your Google account
+3. Click **"Create API Key"**
+4. Copy the generated key (you'll need it in step 4.3)
 
-**Windows:**
-Download from [ollama.com/download](https://ollama.com/download)
+**Note:** The free tier includes generous usage limits suitable for classroom use.
 
-### 4.2 Pull a Model
-
-```bash
-# Recommended: Mistral (good balance of speed and quality)
-ollama pull mistral
-
-# Alternative: LLaMA 3 8B (better quality, slower)
-ollama pull llama3:8b
-```
-
-### 4.3 Start Ollama
-
-```bash
-# In a separate terminal
-ollama serve
-```
-
-Ollama will run on `http://localhost:11434`
-
-### 4.4 Set Up Python Environment
+### 4.2 Set Up Python Environment
 
 ```bash
 cd ai-service
@@ -161,7 +141,7 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 4.5 Configure AI Service Environment
+### 4.3 Configure AI Service Environment
 
 ```bash
 cp .env.example .env
@@ -173,11 +153,11 @@ Update with your credentials:
 ```env
 SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_SERVICE_KEY=your-service-role-key-here
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=mistral
+GEMINI_API_KEY=your-gemini-api-key-here
+GEMINI_MODEL=gemini-1.5-flash
 ```
 
-⚠️ **Important**: Use the `service_role` key here, not the `anon` key. The AI service needs elevated permissions to read all classroom data.
+⚠️ **Important**: Use the `service_role` key for Supabase, not the `anon` key. The AI service needs elevated permissions to read all classroom data.
 
 ---
 
@@ -278,9 +258,10 @@ This adds sample biology notes and chat messages for testing.
 - Make sure `.env.local` exists in the `frontend` folder
 - Check that the URL doesn't have a trailing slash
 
-### Ollama connection refused
-- Make sure Ollama is running: `ollama serve`
-- Check it's accessible: `curl http://localhost:11434/api/tags`
+### Gemini API errors
+- Verify your API key is correct in `.env`
+- Check that you haven't exceeded the free tier limits
+- Ensure the model name is correct (`gemini-1.5-flash` or `gemini-1.5-pro`)
 
 ### AI service can't connect to Supabase
 - Verify you're using the `service_role` key, not `anon`
@@ -289,7 +270,7 @@ This adds sample biology notes and chat messages for testing.
 ### No study guides appearing
 - Check the AI service output for errors
 - Ensure there are uploads in the classroom
-- Verify Ollama is running and the model is downloaded
+- Verify your Gemini API key is valid
 
 ### Auth not working
 - Check Supabase dashboard → Authentication → Users
@@ -351,9 +332,9 @@ For production deployment:
 | Component | Command | URL |
 |-----------|---------|-----|
 | Frontend | `npm run dev` | http://localhost:3000 |
-| Ollama | `ollama serve` | http://localhost:11434 |
 | AI Service | `python ai_service.py` | N/A (background) |
 | Supabase | Cloud hosted | Your project URL |
+| Gemini API | Cloud hosted | https://aistudio.google.com |
 
 ---
 
