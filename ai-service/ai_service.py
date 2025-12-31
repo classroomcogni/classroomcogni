@@ -88,6 +88,19 @@ def get_supabase():
         _supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     return _supabase
 
+# Lazy load ML libraries (they're heavy)
+_embedder = None
+def get_embedder():
+    """Lazy load the sentence transformer model."""
+    global _embedder
+    if _embedder is None:
+        print("Loading embedding model (sentence-transformers/all-MiniLM-L6-v2)...")
+        from sentence_transformers import SentenceTransformer
+        _embedder = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+        print("Model loaded!")
+    return _embedder
+
+
 def fetch_uploads(classroom_id: str) -> List[Dict]:
     """Fetch all uploads for a classroom."""
     supabase = get_supabase()
@@ -123,42 +136,102 @@ def get_processed_upload_ids(classroom_id: str) -> set:
     return set()
 
 
-def generate_study_guide(uploads: List[Dict]) -> str:
-    """
-    Generate a comprehensive study guide from all uploaded notes.
-    
-    Takes all uploads and sends them to the LLM to create a single,
-    well-organized study guide covering all the material.
-    """
-    # Combine all notes into a single text
-    notes_text = ""
-    for i, upload in enumerate(uploads, 1):
-        notes_text += f"\n--- Note {i}: {upload['title']} ---\n"
-        notes_text += upload['content']
-        notes_text += "\n"
-    
-    # Truncate if too long (leave room for prompt)
-    if len(notes_text) > 25000:
-        notes_text = notes_text[:25000] + "\n\n[Additional notes truncated...]"
-    
-    prompt = f"""You are a helpful study assistant. Based on the following class notes, 
-create a comprehensive study guide organized by topic/unit.
+def generate_embeddings(texts: List[str]) -> List[List[float]]:
+    """Generate embeddings for a list of texts using MiniLM."""
+    embedder = get_embedder()
+    embeddings = embedder.encode(texts, show_progress_bar=True)
+    return embeddings.tolist()
 
-CLASS NOTES:
-{notes_text}
 
-Create a SINGLE comprehensive study guide. Structure it as follows:
+def cluster_uploads(uploads: List[Dict], n_clusters: int = 3) -> Dict[int, List[Dict]]:
+    """
+    Cluster uploads into logical units using K-means.
+    
+    This groups related notes together so the AI can generate
+    coherent study guides for each topic area.
+    """
+    if len(uploads) < 2:
+        return {0: uploads}
+    
+    from sklearn.cluster import KMeans
+    import numpy as np
+    
+    # Generate embeddings for all uploads
+    texts = [f"{u['title']}\n{u['content']}" for u in uploads]
+    embeddings = generate_embeddings(texts)
+    
+    # Determine optimal number of clusters (max 5, min 1)
+    n_clusters = min(max(1, len(uploads) // 2), 5, len(uploads))
+    
+    # Perform clustering
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(embeddings)
+    
+    # Group uploads by cluster
+    clusters = {}
+    for i, label in enumerate(labels):
+        if label not in clusters:
+            clusters[label] = []
+        clusters[label].append(uploads[i])
+    
+    return clusters
+
+
+def generate_unit_name(uploads: List[Dict]) -> str:
+    """Generate a descriptive name for a unit based on its uploads."""
+    titles = [u['title'] for u in uploads[:3]]  # Use first 3 titles
+    
+    prompt = f"""Based on these note titles, generate a short, descriptive unit name (3-5 words max):
+Titles: {', '.join(titles)}
+
+Respond with ONLY the unit name, nothing else."""
+
+    try:
+        response = call_llm(prompt)
+        return response.strip().strip('"').strip("'")[:50]  # Limit length
+    except Exception as e:
+        print(f"Error generating unit name: {e}")
+        return f"Unit {uploads[0]['title'][:30]}"
+
+
+def generate_cumulative_study_guide(clusters: Dict[int, List[Dict]], unit_names: List[str]) -> str:
+    """
+    Generate a single cumulative study guide with all units.
+    
+    The AI synthesizes all uploaded notes into a comprehensive,
+    organized study guide with sections for each unit/topic.
+    """
+    # Build content for each unit
+    units_content = []
+    for i, (cluster_id, uploads) in enumerate(clusters.items()):
+        unit_name = unit_names[i] if i < len(unit_names) else f"Unit {i+1}"
+        unit_notes = "\n".join([f"- **{u['title']}**: {u['content'][:500]}..." if len(u['content']) > 500 else f"- **{u['title']}**: {u['content']}" for u in uploads])
+        units_content.append(f"### {unit_name}\n{unit_notes}")
+    
+    combined_content = "\n\n".join(units_content)
+    
+    # Truncate if too long (Gemini context limit)
+    if len(combined_content) > 12000:
+        combined_content = combined_content[:12000] + "\n\n[Content truncated...]"
+    
+    prompt = f"""You are a helpful study assistant. Based on the following class notes organized by topic/unit, 
+create a comprehensive, cumulative study guide.
+
+CLASS NOTES BY UNIT:
+{combined_content}
+
+Create a SINGLE comprehensive study guide that covers ALL units. Structure it as follows:
 
 # 📚 Complete Study Guide
 
 ## 📋 Course Overview
-A brief 2-3 sentence summary of what these notes cover overall.
+A brief 2-3 sentence summary of what this course/class covers overall.
 
 ---
 
-Then organize the content into logical units/topics. For EACH unit, create a section:
+Then for EACH unit/topic, create a section with this structure:
 
-## Unit: [Topic Name]
+## Unit: [Unit Name]
 
 ### 🔑 Key Concepts
 List and explain the main concepts with clear definitions.
@@ -199,10 +272,7 @@ FORMATTING GUIDELINES:
 Write in a friendly, encouraging tone suitable for students."""
 
     try:
-        result = call_llm(prompt)
-        if not result or len(result.strip()) < 100:
-            return "Study guide generation returned empty content. Please try again."
-        return result
+        return call_llm(prompt)
     except Exception as e:
         print(f"Error generating study guide: {e}")
         return f"Study guide generation failed. Please try again later.\n\nError: {str(e)}"
@@ -414,19 +484,34 @@ def process_classroom(classroom_id: str, force_regenerate: bool = False) -> Dict
         print("No new uploads. Skipping study guide generation.")
         return result
     
-    # Generate study guide from all uploads
-    print("\nGenerating study guide from all uploads...")
-    study_guide = generate_study_guide(uploads)
+    # Cluster ALL uploads into units
+    print("\nClustering uploads into units...")
+    clusters = cluster_uploads(uploads)
+    print(f"Created {len(clusters)} unit clusters")
+    
+    # Generate unit names for each cluster
+    print("\nGenerating unit names...")
+    unit_names = []
+    for cluster_id, cluster_items in clusters.items():
+        unit_name = generate_unit_name(cluster_items)
+        unit_names.append(unit_name)
+        print(f"  Unit {cluster_id + 1}: {unit_name} ({len(cluster_items)} notes)")
+    
+    # Generate a SINGLE cumulative study guide
+    print("\nGenerating cumulative study guide...")
+    study_guide = generate_cumulative_study_guide(clusters, unit_names)
     
     # Store/update the study guide
     metadata = {
         'processed_upload_ids': list(current_ids),
         'upload_count': len(uploads),
+        'unit_count': len(clusters),
+        'unit_names': unit_names,
         'last_updated': datetime.utcnow().isoformat()
     }
     update_or_create_study_guide(classroom_id, study_guide, metadata)
     
-    result['message'] = f'Study guide generated from {len(uploads)} uploads.'
+    result['message'] = f'Study guide generated with {len(clusters)} units from {len(uploads)} uploads.'
     
     # Analyze confusion patterns from chat (optional)
     print("\nAnalyzing confusion patterns...")
