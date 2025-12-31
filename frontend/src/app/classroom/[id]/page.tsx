@@ -423,7 +423,8 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
     (m) => m.channel === (activeChannel === 'general' ? 'general' : 'study-guide')
   );
 
-  const studyGuides = insights.filter((i) => i.insight_type === 'study_guide');
+  // Get only the most recent study guide (there should only be one, but filter to be safe)
+  const studyGuide = insights.filter((i) => i.insight_type === 'study_guide')[0] || null;
   const confusionSummaries = insights.filter((i) => i.insight_type === 'confusion_summary');
 
   return (
@@ -575,31 +576,24 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
 
               {/* Study Guide Overview */}
               <div>
-                <h3 className="text-white font-semibold mb-3">Generated Study Guides</h3>
-                {studyGuides.length > 0 ? (
-                  <div className="space-y-3">
-                    {studyGuides.map((guide) => (
-                      <div
-                        key={guide.id}
-                        className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]"
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="text-[#e01e5a] font-medium">
-                            {guide.unit_name || 'General Study Guide'}
-                          </span>
-                          <span className="text-gray-500 text-xs">
-                            {formatDate(guide.created_at)}
-                          </span>
-                        </div>
-                        <p className="text-gray-300 whitespace-pre-wrap line-clamp-4">
-                          {guide.content}
-                        </p>
-                      </div>
-                    ))}
+                <h3 className="text-white font-semibold mb-3">Study Guide</h3>
+                {studyGuide ? (
+                  <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-[#e01e5a] font-medium">
+                        {studyGuide.unit_name || 'Complete Study Guide'}
+                      </span>
+                      <span className="text-gray-500 text-xs">
+                        Last updated: {formatDate(studyGuide.created_at)}
+                      </span>
+                    </div>
+                    <p className="text-gray-300 whitespace-pre-wrap line-clamp-4">
+                      {studyGuide.content}
+                    </p>
                   </div>
                 ) : (
                   <p className="text-gray-500">
-                    No study guides generated yet. Run the AI service after students upload notes.
+                    No study guide generated yet. Run the AI service after students upload notes.
                   </p>
                 )}
               </div>
@@ -637,11 +631,11 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                       ) : (
                         <>
                           <span>🤖</span>
-                          {studyGuides.length > 0 ? 'Update Guide' : 'Generate Guide'}
+                          {studyGuide ? 'Update Guide' : 'Generate Guide'}
                         </>
                       )}
                     </button>
-                    {studyGuides.length > 0 && (
+                    {studyGuide && (
                       <button
                         onClick={() => generateStudyGuide(true)}
                         disabled={isGeneratingGuide}
@@ -668,33 +662,28 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                 )}
               </div>
 
-              {studyGuides.length > 0 ? (
-                studyGuides.map((guide) => (
-                  <div
-                    key={guide.id}
-                    className="bg-[#222529] rounded-lg p-5 border border-[#3f4147]"
-                  >
-                    <div className="flex justify-between items-start mb-4 pb-3 border-b border-[#3f4147]">
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">📖</span>
-                        <h4 className="text-[#e01e5a] font-semibold text-lg">
-                          {guide.unit_name || 'Complete Study Guide'}
-                        </h4>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-gray-500 text-xs bg-[#1a1d21] px-2 py-1 rounded block">
-                          {formatDate(guide.created_at)}
-                        </span>
-                        {guide.metadata?.upload_count != null && (
-                          <span className="text-gray-600 text-xs mt-1 block">
-                            {String(guide.metadata.upload_count)} notes • {String(guide.metadata.unit_count || 1)} units
-                          </span>
-                        )}
-                      </div>
+              {studyGuide ? (
+                <div className="bg-[#222529] rounded-lg p-5 border border-[#3f4147]">
+                  <div className="flex justify-between items-start mb-4 pb-3 border-b border-[#3f4147]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">📖</span>
+                      <h4 className="text-[#e01e5a] font-semibold text-lg">
+                        {studyGuide.unit_name || 'Complete Study Guide'}
+                      </h4>
                     </div>
-                    <StudyGuideContent content={guide.content} />
+                    <div className="text-right">
+                      <span className="text-gray-500 text-xs bg-[#1a1d21] px-2 py-1 rounded block">
+                        Last updated: {formatDate(studyGuide.created_at)}
+                      </span>
+                      {studyGuide.metadata?.upload_count != null && (
+                        <span className="text-gray-600 text-xs mt-1 block">
+                          {String(studyGuide.metadata.upload_count)} notes • {String(studyGuide.metadata.unit_count || 1)} units
+                        </span>
+                      )}
+                    </div>
                   </div>
-                ))
+                  <StudyGuideContent content={studyGuide.content} />
+                </div>
               ) : (
                 <div className="text-center py-8">
                   <div className="text-4xl mb-3">🤖</div>
