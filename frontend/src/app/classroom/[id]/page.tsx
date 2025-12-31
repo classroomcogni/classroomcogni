@@ -24,7 +24,9 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadContent, setUploadContent] = useState('');
   const [isGeneratingGuide, setIsGeneratingGuide] = useState(false);
+  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Cache for user data to avoid repeated fetches
   const [userCache, setUserCache] = useState<Record<string, User>>({});
@@ -96,7 +98,7 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
     setGenerateError(null);
     
     try {
-      const response = await fetch(`${AI_SERVICE_URL}/generate`, {
+      const response = await fetch(`${AI_SERVICE_URL}/generate-study-guide`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -127,6 +129,44 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
       throw error;
     } finally {
       setIsGeneratingGuide(false);
+    }
+  }, [classroomId, fetchInsights, AI_SERVICE_URL]);
+
+  const generateInsights = useCallback(async () => {
+    setIsGeneratingInsights(true);
+    setInsightsError(null);
+    
+    try {
+      const response = await fetch(`${AI_SERVICE_URL}/generate-insights`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          classroom_id: classroomId,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to generate insights');
+      }
+      
+      // Refresh insights to show the new data
+      await fetchInsights();
+      
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to connect to AI service';
+      setInsightsError(message);
+      throw error;
+    } finally {
+      setIsGeneratingInsights(false);
     }
   }, [classroomId, fetchInsights, AI_SERVICE_URL]);
 
@@ -205,6 +245,10 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
       fetchMembers();
       // Add current user to cache
       setUserCache(prev => ({ ...prev, [user.id]: user }));
+      // Teachers should default to insights tab
+      if (user.role === 'teacher') {
+        setActiveChannel('insights');
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, classroomId]);
@@ -450,26 +494,31 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
         {/* Channels */}
         <div className="flex-1 overflow-y-auto p-2">
           <div className="text-gray-400 text-xs font-semibold px-2 py-2">Channels</div>
-          <button
-            onClick={() => setActiveChannel('general')}
-            className={`w-full text-left px-2 py-1 rounded flex items-center gap-2 ${
-              activeChannel === 'general'
-                ? 'bg-[#1164a3] text-white'
-                : 'text-gray-400 hover:bg-[#222529]'
-            }`}
-          >
-            <span className="text-lg">#</span> general
-          </button>
-          <button
-            onClick={() => setActiveChannel('study-guide')}
-            className={`w-full text-left px-2 py-1 rounded flex items-center gap-2 ${
-              activeChannel === 'study-guide'
-                ? 'bg-[#1164a3] text-white'
-                : 'text-gray-400 hover:bg-[#222529]'
-            }`}
-          >
-            <span className="text-lg">#</span> study-guide
-          </button>
+          {/* Students see chat channels, teachers only see insights */}
+          {user.role !== 'teacher' && (
+            <>
+              <button
+                onClick={() => setActiveChannel('general')}
+                className={`w-full text-left px-2 py-1 rounded flex items-center gap-2 ${
+                  activeChannel === 'general'
+                    ? 'bg-[#1164a3] text-white'
+                    : 'text-gray-400 hover:bg-[#222529]'
+                }`}
+              >
+                <span className="text-lg">#</span> general
+              </button>
+              <button
+                onClick={() => setActiveChannel('study-guide')}
+                className={`w-full text-left px-2 py-1 rounded flex items-center gap-2 ${
+                  activeChannel === 'study-guide'
+                    ? 'bg-[#1164a3] text-white'
+                    : 'text-gray-400 hover:bg-[#222529]'
+                }`}
+              >
+                <span className="text-lg">#</span> study-guide
+              </button>
+            </>
+          )}
           {user.role === 'teacher' && (
             <button
               onClick={() => setActiveChannel('insights')}
@@ -540,46 +589,77 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
             // Teachers NEVER see individual student messages here
             <div className="space-y-6">
               <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
-                <h3 className="text-white font-semibold mb-2 flex items-center gap-2">
-                  🔒 Privacy Notice
-                </h3>
-                <p className="text-gray-400 text-sm">
-                  This dashboard shows <strong>aggregated insights only</strong>. 
-                  Individual student messages and identities are never displayed. 
-                  AI analyzes patterns to help you understand class-wide learning needs.
-                </p>
-              </div>
-
-              {/* Confusion Topics */}
-              <div>
-                <h3 className="text-white font-semibold mb-3">Common Confusion Topics</h3>
-                {confusionSummaries.length > 0 ? (
-                  <div className="space-y-3">
-                    {confusionSummaries.map((insight) => (
-                      <div
-                        key={insight.id}
-                        className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]"
-                      >
-                        <div className="text-gray-400 text-xs mb-2">
-                          Generated {formatDate(insight.created_at)}
-                        </div>
-                        <p className="text-gray-300 whitespace-pre-wrap">{insight.content}</p>
-                      </div>
-                    ))}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="text-white font-semibold mb-2 flex items-center gap-2">
+                      🔒 Privacy Notice
+                    </h3>
+                    <p className="text-gray-400 text-sm">
+                      This dashboard shows <strong>aggregated insights only</strong>. 
+                      Individual student messages and identities are never displayed. 
+                      AI analyzes patterns to help you understand class-wide learning needs.
+                    </p>
                   </div>
-                ) : (
-                  <p className="text-gray-500">
-                    No confusion analysis yet. Run the AI service to generate insights.
-                  </p>
+                  <button
+                    onClick={() => generateInsights()}
+                    disabled={isGeneratingInsights}
+                    className={`px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2 ${
+                      isGeneratingInsights
+                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                        : 'bg-[#2eb67d] hover:bg-[#27a06d] text-white'
+                    }`}
+                  >
+                    {isGeneratingInsights ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <span>🤖</span>
+                        Generate Insights
+                      </>
+                    )}
+                  </button>
+                </div>
+                {insightsError && (
+                  <div className="mt-3 p-3 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">
+                    <strong>Error:</strong> {insightsError}
+                    <p className="text-xs mt-1 text-red-400">
+                      Make sure the AI service is running: <code className="bg-red-900/50 px-1 rounded">python ai_service.py --server</code>
+                    </p>
+                  </div>
                 )}
               </div>
 
-              {/* Study Guide Overview */}
+              {/* Confusion Topics - Show only the latest */}
               <div>
-                <h3 className="text-white font-semibold mb-3">Study Guide</h3>
+                <h3 className="text-white font-semibold mb-3">Common Confusion Topics</h3>
+                {confusionSummaries.length > 0 ? (
+                  <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
+                    <div className="text-gray-400 text-xs mb-3">
+                      Last updated: {formatDate(confusionSummaries[0].created_at)}
+                    </div>
+                    <StudyGuideContent content={confusionSummaries[0].content || ''} />
+                  </div>
+                ) : (
+                  <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
+                    <p className="text-gray-500">
+                      No confusion analysis yet. Click &quot;Generate Insights&quot; to analyze student discussions.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Study Guide Overview - Show only the latest */}
+              <div>
+                <h3 className="text-white font-semibold mb-3">Study Guide Preview</h3>
                 {studyGuide ? (
                   <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
-                    <div className="flex justify-between items-start mb-2">
+                    <div className="flex justify-between items-start mb-3">
                       <span className="text-[#e01e5a] font-medium">
                         {studyGuide.unit_name || 'Complete Study Guide'}
                       </span>
@@ -587,14 +667,16 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                         Last updated: {formatDate(studyGuide.created_at)}
                       </span>
                     </div>
-                    <p className="text-gray-300 whitespace-pre-wrap line-clamp-4">
-                      {studyGuide.content || 'No content available'}
-                    </p>
+                    <div className="max-h-64 overflow-y-auto">
+                      <StudyGuideContent content={studyGuide.content || ''} />
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-gray-500">
-                    No study guide generated yet. Run the AI service after students upload notes.
-                  </p>
+                  <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
+                    <p className="text-gray-500">
+                      No study guide generated yet. Students can generate one from the study-guide channel.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>

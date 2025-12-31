@@ -404,9 +404,125 @@ If multiple units are present, repeat the above structure for each unit.
         return f"Study guide generation failed: {str(e)}"
 
 
+def process_study_guide_only(classroom_id: str) -> Dict:
+    """
+    Generate only the study guide for a classroom (no insights).
+    
+    Args:
+        classroom_id: The classroom to process
+        
+    Returns:
+        Dict with processing results
+    """
+    result = {
+        'success': True,
+        'classroom_id': classroom_id,
+        'uploads_processed': 0,
+        'message': ''
+    }
+    
+    print(f"\n{'='*50}")
+    print(f"Generating study guide for classroom: {classroom_id}")
+    print(f"{'='*50}")
+    
+    # Fetch all uploads
+    uploads = fetch_uploads(classroom_id)
+    print(f"\nFound {len(uploads)} total uploads")
+    result['uploads_processed'] = len(uploads)
+    
+    if not uploads:
+        result['message'] = 'No uploads found in this classroom.'
+        print("No uploads to process.")
+        return result
+    
+    # Generate study guide from ALL uploads
+    print("\nGenerating study guide from all uploads...")
+    study_guide = generate_study_guide_from_uploads(uploads)
+    
+    # Store/update the study guide
+    current_ids = [u['id'] for u in uploads]
+    metadata = {
+        'processed_upload_ids': current_ids,
+        'upload_count': len(uploads),
+        'last_updated': datetime.utcnow().isoformat()
+    }
+    update_or_create_study_guide(classroom_id, study_guide, metadata)
+    
+    result['message'] = f'Study guide generated from {len(uploads)} uploads.'
+    
+    print(f"\n{'='*50}")
+    print("Study guide generation complete!")
+    print(f"{'='*50}\n")
+    
+    return result
+
+
+def process_insights_only(classroom_id: str) -> Dict:
+    """
+    Generate only the confusion insights for a classroom (no study guide).
+    
+    Args:
+        classroom_id: The classroom to process
+        
+    Returns:
+        Dict with processing results
+    """
+    result = {
+        'success': True,
+        'classroom_id': classroom_id,
+        'messages_analyzed': 0,
+        'message': ''
+    }
+    
+    print(f"\n{'='*50}")
+    print(f"Generating insights for classroom: {classroom_id}")
+    print(f"{'='*50}")
+    
+    # Analyze confusion patterns from chat
+    print("\nAnalyzing confusion patterns...")
+    messages = fetch_messages(classroom_id)
+    print(f"Found {len(messages)} messages to analyze")
+    result['messages_analyzed'] = len(messages)
+    
+    if not messages:
+        result['message'] = 'No messages found to analyze.'
+        print("No messages to analyze.")
+        return result
+    
+    confusion_summary = analyze_confusion_patterns(messages)
+    
+    # Check if confusion summary already exists
+    supabase = get_supabase()
+    existing_confusion = supabase.table('ai_insights').select('id').eq('classroom_id', classroom_id).eq('insight_type', 'confusion_summary').execute()
+    
+    if existing_confusion.data:
+        # Update existing
+        supabase.table('ai_insights').update({
+            'content': confusion_summary,
+            'metadata': {'message_count': len(messages)},
+            'created_at': datetime.utcnow().isoformat()
+        }).eq('id', existing_confusion.data[0]['id']).execute()
+        print("  ✓ Updated existing confusion summary")
+    else:
+        store_insight(
+            classroom_id=classroom_id,
+            insight_type='confusion_summary',
+            content=confusion_summary,
+            metadata={'message_count': len(messages)}
+        )
+    
+    result['message'] = f'Insights generated from {len(messages)} messages.'
+    
+    print(f"\n{'='*50}")
+    print("Insights generation complete!")
+    print(f"{'='*50}\n")
+    
+    return result
+
+
 def process_classroom(classroom_id: str, force_regenerate: bool = False) -> Dict:
     """
-    Main processing function for a classroom.
+    Main processing function for a classroom (generates both study guide and insights).
     
     This orchestrates the entire AI pipeline:
     1. Fetch all uploads from Supabase
@@ -524,7 +640,7 @@ def run_server():
     
     @app.route('/generate', methods=['POST'])
     def generate():
-        """Generate study guide for a classroom."""
+        """Generate both study guide and insights for a classroom (legacy endpoint)."""
         try:
             data = request.get_json()
             classroom_id = data.get('classroom_id')
@@ -538,6 +654,36 @@ def run_server():
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
     
+    @app.route('/generate-study-guide', methods=['POST'])
+    def generate_study_guide_endpoint():
+        """Generate only the study guide for a classroom (no insights)."""
+        try:
+            data = request.get_json()
+            classroom_id = data.get('classroom_id')
+            
+            if not classroom_id:
+                return jsonify({'success': False, 'error': 'classroom_id is required'}), 400
+            
+            result = process_study_guide_only(classroom_id)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    @app.route('/generate-insights', methods=['POST'])
+    def generate_insights_endpoint():
+        """Generate only the confusion insights for a classroom (no study guide)."""
+        try:
+            data = request.get_json()
+            classroom_id = data.get('classroom_id')
+            
+            if not classroom_id:
+                return jsonify({'success': False, 'error': 'classroom_id is required'}), 400
+            
+            result = process_insights_only(classroom_id)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
     provider_info = get_ai_provider_info()
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
@@ -546,9 +692,10 @@ def run_server():
 ║  AI Provider: {provider_info:<46} ║
 ║                                                               ║
 ║  Endpoints:                                                   ║
-║    GET  /health   - Health check                              ║
-║    POST /generate - Generate study guide                      ║
-║                     Body: {{"classroom_id": "...", "force": false}}  ║
+║    GET  /health              - Health check                   ║
+║    POST /generate            - Generate both (legacy)         ║
+║    POST /generate-study-guide - Study guide only              ║
+║    POST /generate-insights    - Confusion insights only       ║
 ║                                                               ║
 ║  Server running on port {SERVER_PORT}                              ║
 ╚═══════════════════════════════════════════════════════════════╝
