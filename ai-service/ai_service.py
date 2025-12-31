@@ -295,15 +295,15 @@ def process_classroom(classroom_id: str):
         
         # Generate study guide for each cluster
         print("\nGenerating study guides...")
-        for cluster_id, cluster_uploads in clusters.items():
-            print(f"\n  Processing cluster {cluster_id + 1} ({len(cluster_uploads)} uploads)...")
+        for cluster_id, cluster_items in clusters.items():
+            print(f"\n  Processing cluster {cluster_id + 1} ({len(cluster_items)} uploads)...")
             
             # Generate unit name
-            unit_name = generate_unit_name(cluster_uploads)
+            unit_name = generate_unit_name(cluster_items)
             print(f"  Unit name: {unit_name}")
             
             # Generate study guide
-            study_guide = generate_study_guide(cluster_uploads, unit_name)
+            study_guide = generate_study_guide(cluster_items, unit_name)
             
             # Store the study guide
             store_insight(
@@ -312,8 +312,8 @@ def process_classroom(classroom_id: str):
                 content=study_guide,
                 unit_name=unit_name,
                 metadata={
-                    'upload_count': len(cluster_uploads),
-                    'upload_ids': [u['id'] for u in cluster_uploads]
+                    'upload_count': len(cluster_items),
+                    'upload_ids': [u['id'] for u in cluster_items]
                 }
             )
     
