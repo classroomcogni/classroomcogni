@@ -344,7 +344,7 @@ def _call_gemini(prompt: str) -> str:
     generation_config = {
         "temperature": 0.7,
         "top_p": 0.9,
-        "max_output_tokens": 4096,
+        "max_output_tokens": 16384,
     }
     
     safety_settings = [
@@ -399,7 +399,7 @@ def _call_openai(prompt: str) -> str:
                     "content": prompt
                 }
             ],
-            max_completion_tokens=4096,
+            max_completion_tokens=16384,
         )
         result = response.choices[0].message.content or ""
         print(f"OpenAI returned {len(result)} chars")
@@ -471,12 +471,7 @@ def generate_study_guide_from_uploads(uploads: List[Dict]) -> str:
     if len(notes_text.strip()) < 50:
         return "No content found in uploads. Please add some notes first."
     
-    # Truncate to ~8000 chars to stay well within token limits
-    if len(notes_text) > 8000:
-        notes_text = notes_text[:8000] + "\n\n[Additional notes truncated...]"
-        print(f"Truncated notes to 8000 chars")
-    
-    prompt = f"""Based on these class notes, create a study guide organized by unit.
+    prompt = f"""Based on these class notes, create a comprehensive study guide organized by unit.
 
 NOTES:
 {notes_text}
@@ -513,7 +508,7 @@ Most important takeaways.
 - Key concepts to remember
 - 3 comprehensive review questions
 
-Use Markdown formatting. Be concise but thorough."""
+Use Markdown formatting. Be thorough and cover all the material."""
 
     print(f"Calling LLM with prompt length: {len(prompt)} chars")
     
