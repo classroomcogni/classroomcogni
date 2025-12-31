@@ -88,17 +88,7 @@ def get_supabase():
         _supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     return _supabase
 
-# Lazy load ML libraries (they're heavy)
-_embedder = None
-def get_embedder():
-    """Lazy load the sentence transformer model."""
-    global _embedder
-    if _embedder is None:
-        print("Loading embedding model (sentence-transformers/all-MiniLM-L6-v2)...")
-        from sentence_transformers import SentenceTransformer
-        _embedder = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-        print("Model loaded!")
-    return _embedder
+# Embeddings removed; clustering disabled — no heavy ML dependency required.
 
 
 def fetch_uploads(classroom_id: str) -> List[Dict]:
@@ -136,146 +126,11 @@ def get_processed_upload_ids(classroom_id: str) -> set:
     return set()
 
 
-def generate_embeddings(texts: List[str]) -> List[List[float]]:
-    """Generate embeddings for a list of texts using MiniLM."""
-    embedder = get_embedder()
-    embeddings = embedder.encode(texts, show_progress_bar=True)
-    return embeddings.tolist()
+# Embeddings were removed when clustering was removed — no embedding model is required for the current pipeline.
 
 
-def cluster_uploads(uploads: List[Dict], n_clusters: int = 3) -> Dict[int, List[Dict]]:
-    """
-    Cluster uploads into logical units using K-means.
-    
-    This groups related notes together so the AI can generate
-    coherent study guides for each topic area.
-    """
-    if len(uploads) < 2:
-        return {0: uploads}
-    
-    from sklearn.cluster import KMeans
-    import numpy as np
-    
-    # Generate embeddings for all uploads
-    texts = [f"{u['title']}\n{u['content']}" for u in uploads]
-    embeddings = generate_embeddings(texts)
-    
-    # Determine optimal number of clusters (max 5, min 1)
-    n_clusters = min(max(1, len(uploads) // 2), 5, len(uploads))
-    
-    # Perform clustering
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    labels = kmeans.fit_predict(embeddings)
-    
-    # Group uploads by cluster
-    clusters = {}
-    for i, label in enumerate(labels):
-        if label not in clusters:
-            clusters[label] = []
-        clusters[label].append(uploads[i])
-    
-    return clusters
-
-
-def generate_unit_name(uploads: List[Dict]) -> str:
-    """Generate a descriptive name for a unit based on its uploads."""
-    titles = [u['title'] for u in uploads[:3]]  # Use first 3 titles
-    
-    prompt = f"""Based on these note titles, generate a short, descriptive unit name (3-5 words max):
-Titles: {', '.join(titles)}
-
-Respond with ONLY the unit name, nothing else."""
-
-    try:
-        response = call_llm(prompt)
-        return response.strip().strip('"').strip("'")[:50]  # Limit length
-    except Exception as e:
-        print(f"Error generating unit name: {e}")
-        return f"Unit {uploads[0]['title'][:30]}"
-
-
-def generate_cumulative_study_guide(clusters: Dict[int, List[Dict]], unit_names: List[str]) -> str:
-    """
-    Generate a single cumulative study guide with all units.
-    
-    The AI synthesizes all uploaded notes into a comprehensive,
-    organized study guide with sections for each unit/topic.
-    """
-    # Build content for each unit
-    units_content = []
-    for i, (cluster_id, uploads) in enumerate(clusters.items()):
-        unit_name = unit_names[i] if i < len(unit_names) else f"Unit {i+1}"
-        unit_notes = "\n".join([f"- **{u['title']}**: {u['content'][:500]}..." if len(u['content']) > 500 else f"- **{u['title']}**: {u['content']}" for u in uploads])
-        units_content.append(f"### {unit_name}\n{unit_notes}")
-    
-    combined_content = "\n\n".join(units_content)
-    
-    # Truncate if too long (Gemini context limit)
-    if len(combined_content) > 12000:
-        combined_content = combined_content[:12000] + "\n\n[Content truncated...]"
-    
-    prompt = f"""You are a helpful study assistant. Based on the following class notes organized by topic/unit, 
-create a comprehensive, cumulative study guide.
-
-CLASS NOTES BY UNIT:
-{combined_content}
-
-Create a SINGLE comprehensive study guide that covers ALL units. Structure it as follows:
-
-# 📚 Complete Study Guide
-
-## 📋 Course Overview
-A brief 2-3 sentence summary of what this course/class covers overall.
-
----
-
-Then for EACH unit/topic, create a section with this structure:
-
-## Unit: [Unit Name]
-
-### 🔑 Key Concepts
-List and explain the main concepts with clear definitions.
-
-### 📝 Important Terms
-Key vocabulary with definitions (use a table if helpful).
-
-### 💡 Main Ideas
-Bullet points of the most important takeaways.
-
-### 🧮 Formulas & Equations (if applicable)
-Use LaTeX notation for any mathematical formulas:
-- Inline math: $formula$
-- Display math: $$formula$$
-
-### ❓ Review Questions
-2-3 questions to test understanding of this unit.
-
----
-
-After all units, include:
-
-## 🎯 Final Review
-- Key connections between units
-- Most important concepts to remember
-- 3-5 comprehensive review questions covering multiple units
-
-FORMATTING GUIDELINES:
-- Use proper Markdown formatting with headers (##, ###)
-- Use bullet points and numbered lists for clarity
-- Use **bold** for important terms and *italics* for emphasis
-- Use `code blocks` for technical terms or commands
-- Use tables when comparing concepts
-- For math/science content, use LaTeX notation: $inline$ or $$display$$
-- Use blockquotes (>) for important notes or tips
-- Use horizontal rules (---) to separate units
-
-Write in a friendly, encouraging tone suitable for students."""
-
-    try:
-        return call_llm(prompt)
-    except Exception as e:
-        print(f"Error generating study guide: {e}")
-        return f"Study guide generation failed. Please try again later.\n\nError: {str(e)}"
+# Clustering and unit-name generation removed to simplify the pipeline.
+# All uploads are combined and passed to `generate_study_guide_from_uploads` which produces a single comprehensive study guide.
 
 
 def analyze_confusion_patterns(messages: List[Dict]) -> str:
@@ -471,70 +326,62 @@ def generate_study_guide_from_uploads(uploads: List[Dict]) -> str:
     if len(notes_text.strip()) < 50:
         return "No content found in uploads. Please add some notes first."
     
-    prompt = f"""Based on these class notes, create a detailed study guide.
+    prompt = f"""You are an expert academic tutor and study-guide designer.
+NOTES: {notes_text}
 
-NOTES:
-{notes_text}
+TASK:
+Given a student’s uploaded notes, create a comprehensive, high-quality study guide that is clearly separated by unit.
 
-INSTRUCTIONS:
-1. Organize content into logical units/topics based on the material
-2. For each unit, provide SPECIFIC and DETAILED explanations - no vague placeholders
-3. Define every term and concept explicitly
-4. Include actual examples, not just "see examples"
+CRITICAL RULES:
+- Use ONLY the information in the provided notes.
+- Do NOT invent topics, formulas, or examples not present in the notes.
+- Prioritize clarity, correctness, and usefulness for exam preparation.
 
-MATH FORMATTING (CRITICAL):
-- For inline math, use single dollar signs: $x^2 + y^2 = z^2$
-- For display/block math, use double dollar signs on their own lines:
-$$
-E = mc^2
-$$
-- Use standard LaTeX commands: \\frac{{a}}{{b}}, \\sqrt{{x}}, \\sum, \\int, \\alpha, \\beta, etc.
-- Greek letters: $\\alpha$, $\\beta$, $\\gamma$, $\\theta$, $\\pi$, $\\Delta$
-- Fractions: $\\frac{{numerator}}{{denominator}}$
-- Subscripts/superscripts: $x_1$, $x^2$, $x_{{n+1}}$
-- DO NOT use \\( \\) or \\[ \\] delimiters - ONLY use $ and $$
+OUTPUT FORMAT REQUIREMENTS:
+- Use clean, structured Markdown.
+- Use LaTeX-style math formatting for all mathematical expressions:
+  - Inline math: $...$
+  - Displayed equations: $$...$$
+- Preserve special symbols (∫, ∑, →, ≤, ≥, etc.) correctly.
+- Use headings, subheadings, bullet points, tables, and spacing for readability.
 
-FORMAT:
+STRUCTURE THE STUDY GUIDE AS FOLLOWS:
 
-# Study Guide
+# 📘 Unit X: [Unit Title or Topic]
 
-## Overview
-[2-3 sentences summarizing the material]
+## 1. Core Concepts
+- Concise explanations of key ideas
+- Define important terms clearly
+- Explain *why* concepts matter or how they are used
 
----
+## 2. Key Formulas & Rules
+- List all formulas exactly as presented in the notes
+- For each formula:
+  - State what each variable represents
+  - Briefly explain when/how to use it
+- Use proper math formatting
 
-## [Unit Name]
+## 3. Worked Examples (If Present in Notes)
+- Rewrite example problems step-by-step
+- Clearly show reasoning and intermediate steps
+- Highlight common patterns or strategies
 
-### Key Concepts
-[For each concept: name it, define it clearly, explain why it matters]
+## 4. Common Mistakes & Pitfalls
+- Based strictly on the notes
+- Emphasize misunderstandings students are likely to have
 
-### Definitions
-| Term | Definition |
-|------|------------|
-| [term] | [clear, complete definition] |
+## 5. Exam-Focused Takeaways
+- Short bullet points summarizing what students must remember
+- Prioritize high-yield ideas
 
-### Formulas & Equations
-[List each formula with explanation of variables and when to use it]
+STYLE GUIDELINES:
+- Write for a motivated high school or early college student.
+- Be precise, not verbose.
+- Use simple language without dumbing down the math.
+- Avoid filler phrases like “this is important” — show importance through explanation.
 
-### Examples
-[Provide worked examples where applicable]
-
-### Summary
-[Bullet points of the most critical takeaways - be specific]
-
----
-
-[Repeat for each unit]
-
-## Review Questions
-[5-10 questions that test understanding, with answers]
-
-IMPORTANT:
-- Be SPECIFIC and DETAILED - no filler content
-- Every section must have real, substantive content
-- Format ALL math with LaTeX using $ for inline and $$ for display
-- Use tables for definitions and comparisons
-- Include actual worked examples where relevant"""
+If multiple units are present, repeat the above structure for each unit.
+"""
 
     print(f"Calling LLM with prompt length: {len(prompt)} chars")
     
