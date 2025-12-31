@@ -471,44 +471,60 @@ def generate_study_guide_from_uploads(uploads: List[Dict]) -> str:
     if len(notes_text.strip()) < 50:
         return "No content found in uploads. Please add some notes first."
     
-    prompt = f"""Based on these class notes, create a comprehensive study guide organized by unit.
+    prompt = f"""Based on these class notes, create a detailed study guide.
 
 NOTES:
 {notes_text}
 
-Create a study guide with this structure:
+INSTRUCTIONS:
+1. Organize content into logical units/topics based on the material
+2. For each unit, provide SPECIFIC and DETAILED explanations - no vague placeholders
+3. Define every term and concept explicitly
+4. Include actual examples, not just "see examples"
+5. For math/science: write ALL equations using LaTeX (e.g., $E = mc^2$ for inline, $$\\int_a^b f(x)dx$$ for display)
+6. Use proper formatting for special characters and symbols
 
-# 📚 Study Guide
+FORMAT:
+
+# Study Guide
 
 ## Overview
-Brief summary of what these notes cover.
+[2-3 sentences summarizing the material]
 
 ---
 
-For each topic/unit:
-
-## Unit: [Name]
+## [Unit Name]
 
 ### Key Concepts
-Main concepts with definitions.
+[For each concept: name it, define it clearly, explain why it matters]
 
-### Important Terms
-Key vocabulary.
+### Definitions
+| Term | Definition |
+|------|------------|
+| [term] | [clear, complete definition] |
 
-### Main Ideas
-Most important takeaways.
+### Formulas & Equations
+[List each formula with explanation of variables and when to use it]
 
-### Review Questions
-2-3 questions to test understanding.
+### Examples
+[Provide worked examples where applicable]
+
+### Summary
+[Bullet points of the most critical takeaways - be specific]
 
 ---
 
-## Final Review
-- Connections between units
-- Key concepts to remember
-- 3 comprehensive review questions
+[Repeat for each unit]
 
-Use Markdown formatting. Be thorough and cover all the material."""
+## Review Questions
+[5-10 questions that test understanding, with answers]
+
+IMPORTANT:
+- Be SPECIFIC and DETAILED - no filler content
+- Every section must have real, substantive content
+- Format all math properly with LaTeX
+- Use tables for definitions and comparisons
+- Include actual worked examples where relevant"""
 
     print(f"Calling LLM with prompt length: {len(prompt)} chars")
     
