@@ -399,7 +399,7 @@ def _call_openai(prompt: str) -> str:
                     "content": prompt
                 }
             ],
-            max_tokens=4096,
+            max_completion_tokens=4096,
         )
         result = response.choices[0].message.content or ""
         print(f"OpenAI returned {len(result)} chars")
@@ -471,66 +471,49 @@ def generate_study_guide_from_uploads(uploads: List[Dict]) -> str:
     if len(notes_text.strip()) < 50:
         return "No content found in uploads. Please add some notes first."
     
-    # Truncate if too long (leave room for prompt)
-    if len(notes_text) > 25000:
-        notes_text = notes_text[:25000] + "\n\n[Additional notes truncated...]"
+    # Truncate to ~8000 chars to stay well within token limits
+    if len(notes_text) > 8000:
+        notes_text = notes_text[:8000] + "\n\n[Additional notes truncated...]"
+        print(f"Truncated notes to 8000 chars")
     
-    prompt = f"""You are a helpful study assistant. Based on the following class notes, 
-create a comprehensive study guide organized by topic/unit.
+    prompt = f"""Based on these class notes, create a study guide organized by unit.
 
-CLASS NOTES:
+NOTES:
 {notes_text}
 
-Create a SINGLE comprehensive study guide. Structure it as follows:
+Create a study guide with this structure:
 
-# 📚 Complete Study Guide
+# 📚 Study Guide
 
-## 📋 Course Overview
-A brief 2-3 sentence summary of what these notes cover overall.
-
----
-
-Then organize the content into logical units/topics. For EACH unit, create a section:
-
-## Unit: [Topic Name]
-
-### 🔑 Key Concepts
-List and explain the main concepts with clear definitions.
-
-### 📝 Important Terms
-Key vocabulary with definitions (use a table if helpful).
-
-### 💡 Main Ideas
-Bullet points of the most important takeaways.
-
-### 🧮 Formulas & Equations (if applicable)
-Use LaTeX notation for any mathematical formulas:
-- Inline math: $formula$
-- Display math: $$formula$$
-
-### ❓ Review Questions
-2-3 questions to test understanding of this unit.
+## Overview
+Brief summary of what these notes cover.
 
 ---
 
-After all units, include:
+For each topic/unit:
 
-## 🎯 Final Review
-- Key connections between units
-- Most important concepts to remember
-- 3-5 comprehensive review questions covering multiple units
+## Unit: [Name]
 
-FORMATTING GUIDELINES:
-- Use proper Markdown formatting with headers (##, ###)
-- Use bullet points and numbered lists for clarity
-- Use **bold** for important terms and *italics* for emphasis
-- Use `code blocks` for technical terms or commands
-- Use tables when comparing concepts
-- For math/science content, use LaTeX notation: $inline$ or $$display$$
-- Use blockquotes (>) for important notes or tips
-- Use horizontal rules (---) to separate units
+### Key Concepts
+Main concepts with definitions.
 
-Write in a friendly, encouraging tone suitable for students."""
+### Important Terms
+Key vocabulary.
+
+### Main Ideas
+Most important takeaways.
+
+### Review Questions
+2-3 questions to test understanding.
+
+---
+
+## Final Review
+- Connections between units
+- Key concepts to remember
+- 3 comprehensive review questions
+
+Use Markdown formatting. Be concise but thorough."""
 
     print(f"Calling LLM with prompt length: {len(prompt)} chars")
     
