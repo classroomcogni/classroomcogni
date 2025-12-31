@@ -2,21 +2,20 @@
 ClassroomCogni AI Service
 =========================
 
-This service runs as a background process that:
-1. Fetches uploaded notes from Supabase
-2. Generates embeddings using sentence-transformers
-3. Clusters notes into logical units
-4. Generates study guides using Google Gemini API
-5. Analyzes chat for confusion patterns (aggregated, anonymous)
-6. Stores results back to Supabase
+This service can run as:
+1. CLI tool: python ai_service.py [classroom_id]
+2. HTTP server: python ai_service.py --server
+
+Features:
+- Generates cumulative study guides organized by units
+- Only processes NEW uploads (saves Gemini API credits)
+- Analyzes chat for confusion patterns (aggregated, anonymous)
 
 PRIVACY ARCHITECTURE:
 - This service reads raw student data but NEVER exposes individual messages to teachers
 - All insights stored are AGGREGATED and ANONYMIZED
 - Teachers only see patterns, not individual student contributions
 - The AI acts as a privacy-preserving intermediary
-
-Run: python ai_service.py [classroom_id]
 """
 
 import os
@@ -37,20 +36,29 @@ SUPABASE_SERVICE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
 
-# Check for required environment variables
-if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-    print("Error: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
-    print("Copy .env.example to .env and fill in your credentials")
-    sys.exit(1)
+# Server configuration
+SERVER_PORT = int(os.getenv('AI_SERVICE_PORT', '5000'))
 
-if not GEMINI_API_KEY:
-    print("Error: GEMINI_API_KEY must be set")
-    print("Get your API key from https://aistudio.google.com/app/apikey")
-    sys.exit(1)
+def check_env():
+    """Check for required environment variables."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        print("Error: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
+        print("Copy .env.example to .env and fill in your credentials")
+        return False
+    if not GEMINI_API_KEY:
+        print("Error: GEMINI_API_KEY must be set")
+        print("Get your API key from https://aistudio.google.com/app/apikey")
+        return False
+    return True
 
-# Initialize Supabase client
-from supabase import create_client
-supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+# Initialize Supabase client (lazy)
+_supabase = None
+def get_supabase():
+    global _supabase
+    if _supabase is None:
+        from supabase import create_client
+        _supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    return _supabase
 
 # Lazy load ML libraries (they're heavy)
 _embedder = None
@@ -67,7 +75,8 @@ def get_embedder():
 
 def fetch_uploads(classroom_id: str) -> List[Dict]:
     """Fetch all uploads for a classroom."""
-    response = supabase.table('uploads').select('*').eq('classroom_id', classroom_id).execute()
+    supabase = get_supabase()
+    response = supabase.table('uploads').select('*').eq('classroom_id', classroom_id).order('created_at').execute()
     return response.data or []
 
 
@@ -79,8 +88,24 @@ def fetch_messages(classroom_id: str) -> List[Dict]:
     in a way that teachers can see individual messages. Only aggregated
     patterns are extracted and stored.
     """
+    supabase = get_supabase()
     response = supabase.table('messages').select('content').eq('classroom_id', classroom_id).execute()
     return response.data or []
+
+
+def get_existing_study_guide(classroom_id: str) -> Optional[Dict]:
+    """Get the existing study guide for a classroom (if any)."""
+    supabase = get_supabase()
+    response = supabase.table('ai_insights').select('*').eq('classroom_id', classroom_id).eq('insight_type', 'study_guide').order('created_at', desc=True).limit(1).execute()
+    return response.data[0] if response.data else None
+
+
+def get_processed_upload_ids(classroom_id: str) -> set:
+    """Get the set of upload IDs that have already been processed."""
+    existing = get_existing_study_guide(classroom_id)
+    if existing and existing.get('metadata'):
+        return set(existing['metadata'].get('processed_upload_ids', []))
+    return set()
 
 
 def generate_embeddings(texts: List[str]) -> List[List[float]]:
@@ -141,50 +166,70 @@ Respond with ONLY the unit name, nothing else."""
         return f"Unit {uploads[0]['title'][:30]}"
 
 
-def generate_study_guide(uploads: List[Dict], unit_name: str) -> str:
+def generate_cumulative_study_guide(clusters: Dict[int, List[Dict]], unit_names: List[str]) -> str:
     """
-    Generate a student-friendly study guide from clustered uploads.
+    Generate a single cumulative study guide with all units.
     
-    The AI synthesizes the uploaded notes into a clear, organized
-    study guide that helps students review the material.
+    The AI synthesizes all uploaded notes into a comprehensive,
+    organized study guide with sections for each unit/topic.
     """
-    # Combine all content from the cluster
-    combined_content = "\n\n---\n\n".join([
-        f"**{u['title']}**\n{u['content']}" for u in uploads
-    ])
+    # Build content for each unit
+    units_content = []
+    for i, (cluster_id, uploads) in enumerate(clusters.items()):
+        unit_name = unit_names[i] if i < len(unit_names) else f"Unit {i+1}"
+        unit_notes = "\n".join([f"- **{u['title']}**: {u['content'][:500]}..." if len(u['content']) > 500 else f"- **{u['title']}**: {u['content']}" for u in uploads])
+        units_content.append(f"### {unit_name}\n{unit_notes}")
+    
+    combined_content = "\n\n".join(units_content)
     
     # Truncate if too long (Gemini context limit)
-    if len(combined_content) > 8000:
-        combined_content = combined_content[:8000] + "\n\n[Content truncated...]"
+    if len(combined_content) > 12000:
+        combined_content = combined_content[:12000] + "\n\n[Content truncated...]"
     
-    prompt = f"""You are a helpful study assistant. Based on the following class notes about "{unit_name}", 
-create a clear, student-friendly study guide.
+    prompt = f"""You are a helpful study assistant. Based on the following class notes organized by topic/unit, 
+create a comprehensive, cumulative study guide.
 
-CLASS NOTES:
+CLASS NOTES BY UNIT:
 {combined_content}
 
-Create a comprehensive study guide with the following structure:
+Create a SINGLE comprehensive study guide that covers ALL units. Structure it as follows:
 
-## 📋 Overview
-A brief 2-3 sentence summary of what this unit covers.
+# 📚 Complete Study Guide
 
-## 🔑 Key Concepts
+## 📋 Course Overview
+A brief 2-3 sentence summary of what this course/class covers overall.
+
+---
+
+Then for EACH unit/topic, create a section with this structure:
+
+## Unit: [Unit Name]
+
+### 🔑 Key Concepts
 List and explain the main concepts with clear definitions.
 
-## 📝 Important Terms
-Create a table or list of key vocabulary with definitions.
+### 📝 Important Terms
+Key vocabulary with definitions (use a table if helpful).
 
-## 💡 Main Ideas to Remember
+### 💡 Main Ideas
 Bullet points of the most important takeaways.
 
-## 🧮 Formulas & Equations (if applicable)
-Use LaTeX notation for any mathematical formulas. For inline math use $formula$ and for display math use $$formula$$.
-Examples:
-- Inline: The quadratic formula is $x = \\frac{{-b \\pm \\sqrt{{b^2-4ac}}}}{{2a}}$
-- Display: $$E = mc^2$$
+### 🧮 Formulas & Equations (if applicable)
+Use LaTeX notation for any mathematical formulas:
+- Inline math: $formula$
+- Display math: $$formula$$
 
-## ❓ Review Questions
-Include 3-5 questions to test understanding.
+### ❓ Review Questions
+2-3 questions to test understanding of this unit.
+
+---
+
+After all units, include:
+
+## 🎯 Final Review
+- Key connections between units
+- Most important concepts to remember
+- 3-5 comprehensive review questions covering multiple units
 
 FORMATTING GUIDELINES:
 - Use proper Markdown formatting with headers (##, ###)
@@ -194,6 +239,7 @@ FORMATTING GUIDELINES:
 - Use tables when comparing concepts
 - For math/science content, use LaTeX notation: $inline$ or $$display$$
 - Use blockquotes (>) for important notes or tips
+- Use horizontal rules (---) to separate units
 
 Write in a friendly, encouraging tone suitable for students."""
 
@@ -281,6 +327,7 @@ def call_gemini(prompt: str) -> str:
 
 def store_insight(classroom_id: str, insight_type: str, content: str, unit_name: Optional[str] = None, metadata: Dict = None):
     """Store an AI insight in Supabase."""
+    supabase = get_supabase()
     data = {
         'classroom_id': classroom_id,
         'insight_type': insight_type,
@@ -293,76 +340,151 @@ def store_insight(classroom_id: str, insight_type: str, content: str, unit_name:
     print(f"  ✓ Stored {insight_type}" + (f" for {unit_name}" if unit_name else ""))
 
 
-def process_classroom(classroom_id: str):
+def update_or_create_study_guide(classroom_id: str, content: str, metadata: Dict):
+    """Update existing study guide or create a new one."""
+    supabase = get_supabase()
+    existing = get_existing_study_guide(classroom_id)
+    
+    if existing:
+        # Update existing study guide
+        supabase.table('ai_insights').update({
+            'content': content,
+            'metadata': metadata,
+            'created_at': datetime.utcnow().isoformat()
+        }).eq('id', existing['id']).execute()
+        print("  ✓ Updated existing study guide")
+    else:
+        # Create new study guide
+        store_insight(
+            classroom_id=classroom_id,
+            insight_type='study_guide',
+            content=content,
+            unit_name='Complete Study Guide',
+            metadata=metadata
+        )
+
+
+def process_classroom(classroom_id: str, force_regenerate: bool = False) -> Dict:
     """
     Main processing function for a classroom.
     
     This orchestrates the entire AI pipeline:
     1. Fetch data from Supabase
-    2. Cluster uploads into units
-    3. Generate study guides for each unit
-    4. Analyze confusion patterns
-    5. Store results back to Supabase
+    2. Check for new uploads (skip already processed ones)
+    3. Cluster ALL uploads into units
+    4. Generate a SINGLE cumulative study guide
+    5. Analyze confusion patterns
+    6. Store results back to Supabase
+    
+    Args:
+        classroom_id: The classroom to process
+        force_regenerate: If True, regenerate even if no new uploads
+        
+    Returns:
+        Dict with processing results
     """
+    result = {
+        'success': True,
+        'classroom_id': classroom_id,
+        'uploads_processed': 0,
+        'new_uploads': 0,
+        'message': ''
+    }
+    
     print(f"\n{'='*50}")
     print(f"Processing classroom: {classroom_id}")
     print(f"{'='*50}")
     
-    # Fetch uploads
+    # Fetch all uploads
     uploads = fetch_uploads(classroom_id)
-    print(f"\nFound {len(uploads)} uploads")
+    print(f"\nFound {len(uploads)} total uploads")
+    result['uploads_processed'] = len(uploads)
     
-    if uploads:
-        # Cluster uploads into units
-        print("\nClustering uploads into units...")
-        clusters = cluster_uploads(uploads)
-        print(f"Created {len(clusters)} unit clusters")
-        
-        # Generate study guide for each cluster
-        print("\nGenerating study guides...")
-        for cluster_id, cluster_items in clusters.items():
-            print(f"\n  Processing cluster {cluster_id + 1} ({len(cluster_items)} uploads)...")
-            
-            # Generate unit name
-            unit_name = generate_unit_name(cluster_items)
-            print(f"  Unit name: {unit_name}")
-            
-            # Generate study guide
-            study_guide = generate_study_guide(cluster_items, unit_name)
-            
-            # Store the study guide
-            store_insight(
-                classroom_id=classroom_id,
-                insight_type='study_guide',
-                content=study_guide,
-                unit_name=unit_name,
-                metadata={
-                    'upload_count': len(cluster_items),
-                    'upload_ids': [u['id'] for u in cluster_items]
-                }
-            )
+    if not uploads:
+        result['message'] = 'No uploads found in this classroom.'
+        print("No uploads to process.")
+        return result
     
-    # Analyze confusion patterns from chat
+    # Check which uploads are new
+    processed_ids = get_processed_upload_ids(classroom_id)
+    current_ids = set(u['id'] for u in uploads)
+    new_ids = current_ids - processed_ids
+    
+    print(f"Previously processed: {len(processed_ids)} uploads")
+    print(f"New uploads: {len(new_ids)}")
+    result['new_uploads'] = len(new_ids)
+    
+    # Skip if no new uploads (unless force regenerate)
+    if not new_ids and not force_regenerate:
+        result['message'] = 'No new uploads to process. Study guide is up to date.'
+        print("No new uploads. Skipping study guide generation.")
+        return result
+    
+    # Cluster ALL uploads into units
+    print("\nClustering uploads into units...")
+    clusters = cluster_uploads(uploads)
+    print(f"Created {len(clusters)} unit clusters")
+    
+    # Generate unit names for each cluster
+    print("\nGenerating unit names...")
+    unit_names = []
+    for cluster_id, cluster_items in clusters.items():
+        unit_name = generate_unit_name(cluster_items)
+        unit_names.append(unit_name)
+        print(f"  Unit {cluster_id + 1}: {unit_name} ({len(cluster_items)} notes)")
+    
+    # Generate a SINGLE cumulative study guide
+    print("\nGenerating cumulative study guide...")
+    study_guide = generate_cumulative_study_guide(clusters, unit_names)
+    
+    # Store/update the study guide
+    metadata = {
+        'processed_upload_ids': list(current_ids),
+        'upload_count': len(uploads),
+        'unit_count': len(clusters),
+        'unit_names': unit_names,
+        'last_updated': datetime.utcnow().isoformat()
+    }
+    update_or_create_study_guide(classroom_id, study_guide, metadata)
+    
+    result['message'] = f'Study guide generated with {len(clusters)} units from {len(uploads)} uploads.'
+    
+    # Analyze confusion patterns from chat (optional)
     print("\nAnalyzing confusion patterns...")
     messages = fetch_messages(classroom_id)
     print(f"Found {len(messages)} messages to analyze")
     
     if messages:
         confusion_summary = analyze_confusion_patterns(messages)
-        store_insight(
-            classroom_id=classroom_id,
-            insight_type='confusion_summary',
-            content=confusion_summary,
-            metadata={'message_count': len(messages)}
-        )
+        # Check if confusion summary already exists
+        supabase = get_supabase()
+        existing_confusion = supabase.table('ai_insights').select('id').eq('classroom_id', classroom_id).eq('insight_type', 'confusion_summary').execute()
+        
+        if existing_confusion.data:
+            # Update existing
+            supabase.table('ai_insights').update({
+                'content': confusion_summary,
+                'metadata': {'message_count': len(messages)},
+                'created_at': datetime.utcnow().isoformat()
+            }).eq('id', existing_confusion.data[0]['id']).execute()
+        else:
+            store_insight(
+                classroom_id=classroom_id,
+                insight_type='confusion_summary',
+                content=confusion_summary,
+                metadata={'message_count': len(messages)}
+            )
     
     print(f"\n{'='*50}")
     print("Processing complete!")
     print(f"{'='*50}\n")
+    
+    return result
 
 
 def process_all_classrooms():
     """Process all classrooms in the database."""
+    supabase = get_supabase()
     response = supabase.table('classrooms').select('id, name').execute()
     classrooms = response.data or []
     
@@ -372,8 +494,59 @@ def process_all_classrooms():
         process_classroom(classroom['id'])
 
 
+# ============================================================
+# HTTP Server for Frontend Integration
+# ============================================================
+
+def run_server():
+    """Run the AI service as an HTTP server."""
+    from flask import Flask, request, jsonify
+    from flask_cors import CORS
+    
+    app = Flask(__name__)
+    CORS(app)  # Enable CORS for frontend requests
+    
+    @app.route('/health', methods=['GET'])
+    def health():
+        return jsonify({'status': 'ok', 'model': GEMINI_MODEL})
+    
+    @app.route('/generate', methods=['POST'])
+    def generate():
+        """Generate study guide for a classroom."""
+        try:
+            data = request.get_json()
+            classroom_id = data.get('classroom_id')
+            force = data.get('force', False)
+            
+            if not classroom_id:
+                return jsonify({'success': False, 'error': 'classroom_id is required'}), 400
+            
+            result = process_classroom(classroom_id, force_regenerate=force)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    print(f"""
+╔═══════════════════════════════════════════════════════════════╗
+║           ClassroomCogni AI Service (HTTP Server)             ║
+║                                                               ║
+║  Endpoints:                                                   ║
+║    GET  /health   - Health check                              ║
+║    POST /generate - Generate study guide                      ║
+║                     Body: {{"classroom_id": "...", "force": false}}  ║
+║                                                               ║
+║  Server running on port {SERVER_PORT}                              ║
+╚═══════════════════════════════════════════════════════════════╝
+    """)
+    
+    app.run(host='0.0.0.0', port=SERVER_PORT, debug=False)
+
+
 def main():
     """Main entry point."""
+    if not check_env():
+        sys.exit(1)
+    
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║           ClassroomCogni AI Service                           ║
@@ -389,9 +562,13 @@ def main():
     """)
     
     if len(sys.argv) > 1:
-        # Process specific classroom
-        classroom_id = sys.argv[1]
-        process_classroom(classroom_id)
+        if sys.argv[1] == '--server':
+            # Run as HTTP server
+            run_server()
+        else:
+            # Process specific classroom
+            classroom_id = sys.argv[1]
+            process_classroom(classroom_id)
     else:
         # Process all classrooms
         print("No classroom ID provided. Processing all classrooms...")

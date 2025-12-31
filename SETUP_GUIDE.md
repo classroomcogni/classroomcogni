@@ -234,6 +234,40 @@ The cell is the basic unit of life. Key organelles include:
 
 ### 5.5 Run the AI Service
 
+The AI service can run in two modes:
+
+#### Option A: HTTP Server Mode (Recommended)
+
+This mode allows you to generate study guides directly from the web interface:
+
+**macOS/Linux:**
+```bash
+cd ai-service
+source venv/bin/activate  # if not already activated
+python ai_service.py --server
+```
+
+**Windows (PowerShell):**
+```powershell
+cd ai-service
+.\venv\Scripts\Activate.ps1
+python ai_service.py --server
+```
+
+The server will start on port 5000 (configurable via `AI_SERVICE_PORT` in `.env`).
+
+Then in the web app:
+1. Go to a classroom
+2. Click on the **#study-guide** channel
+3. Click the **"Generate Guide"** button
+
+The AI will:
+- Cluster your notes into logical units/topics
+- Generate a comprehensive study guide covering all units
+- Only process NEW uploads (saves API credits!)
+
+#### Option B: CLI Mode (One-time processing)
+
 ```bash
 cd ai-service
 source venv/bin/activate  # if not already activated

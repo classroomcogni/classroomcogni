@@ -23,6 +23,8 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadContent, setUploadContent] = useState('');
+  const [isGeneratingGuide, setIsGeneratingGuide] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Cache for user data to avoid repeated fetches
   const [userCache, setUserCache] = useState<Record<string, User>>({});
@@ -85,6 +87,48 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
       .order('created_at', { ascending: false });
     setInsights(data || []);
   }, [classroomId]);
+
+  // AI Service URL - can be configured via environment variable
+  const AI_SERVICE_URL = process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:5000';
+
+  const generateStudyGuide = useCallback(async (force: boolean = false) => {
+    setIsGeneratingGuide(true);
+    setGenerateError(null);
+    
+    try {
+      const response = await fetch(`${AI_SERVICE_URL}/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          classroom_id: classroomId,
+          force: force,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to generate study guide');
+      }
+      
+      // Refresh insights to show the new study guide
+      await fetchInsights();
+      
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to connect to AI service';
+      setGenerateError(message);
+      throw error;
+    } finally {
+      setIsGeneratingGuide(false);
+    }
+  }, [classroomId, fetchInsights, AI_SERVICE_URL]);
 
   const fetchMembers = useCallback(async () => {
     const userIds = new Set<string>();
@@ -564,11 +608,64 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
             // Study Guide Channel - Shows AI-generated guides
             <div className="space-y-4">
               <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
-                <h3 className="text-white font-semibold mb-2">📚 AI-Generated Study Guides</h3>
-                <p className="text-gray-400 text-sm">
-                  These study guides are automatically generated from uploaded class notes.
-                  The AI organizes content into logical units to help you study effectively.
-                </p>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="text-white font-semibold mb-2">📚 AI-Generated Study Guide</h3>
+                    <p className="text-gray-400 text-sm">
+                      This cumulative study guide is generated from all uploaded class notes,
+                      organized by topic/unit to help you study effectively.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => generateStudyGuide(false)}
+                      disabled={isGeneratingGuide || uploads.length === 0}
+                      className={`px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2 ${
+                        isGeneratingGuide || uploads.length === 0
+                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                          : 'bg-[#2eb67d] hover:bg-[#27a06d] text-white'
+                      }`}
+                    >
+                      {isGeneratingGuide ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <span>🤖</span>
+                          {studyGuides.length > 0 ? 'Update Guide' : 'Generate Guide'}
+                        </>
+                      )}
+                    </button>
+                    {studyGuides.length > 0 && (
+                      <button
+                        onClick={() => generateStudyGuide(true)}
+                        disabled={isGeneratingGuide}
+                        className="px-3 py-1 rounded text-xs text-gray-400 hover:text-white hover:bg-[#3f4147] transition-colors"
+                        title="Force regenerate the entire study guide"
+                      >
+                        🔄 Force Regenerate
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {generateError && (
+                  <div className="mt-3 p-3 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">
+                    <strong>Error:</strong> {generateError}
+                    <p className="text-xs mt-1 text-red-400">
+                      Make sure the AI service is running: <code className="bg-red-900/50 px-1 rounded">python ai_service.py --server</code>
+                    </p>
+                  </div>
+                )}
+                {uploads.length === 0 && (
+                  <div className="mt-3 p-3 bg-yellow-900/30 border border-yellow-700 rounded text-yellow-300 text-sm">
+                    📝 Upload some notes first before generating a study guide.
+                  </div>
+                )}
               </div>
 
               {studyGuides.length > 0 ? (
@@ -581,12 +678,19 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                       <div className="flex items-center gap-2">
                         <span className="text-2xl">📖</span>
                         <h4 className="text-[#e01e5a] font-semibold text-lg">
-                          {guide.unit_name || 'Study Guide'}
+                          {guide.unit_name || 'Complete Study Guide'}
                         </h4>
                       </div>
-                      <span className="text-gray-500 text-xs bg-[#1a1d21] px-2 py-1 rounded">
-                        {formatDate(guide.created_at)}
-                      </span>
+                      <div className="text-right">
+                        <span className="text-gray-500 text-xs bg-[#1a1d21] px-2 py-1 rounded block">
+                          {formatDate(guide.created_at)}
+                        </span>
+                        {guide.metadata?.upload_count != null && (
+                          <span className="text-gray-600 text-xs mt-1 block">
+                            {String(guide.metadata.upload_count)} notes • {String(guide.metadata.unit_count || 1)} units
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <StudyGuideContent content={guide.content} />
                   </div>
@@ -595,7 +699,7 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                 <div className="text-center py-8">
                   <div className="text-4xl mb-3">🤖</div>
                   <p className="text-gray-400">
-                    No study guides yet. Upload notes and the AI will generate guides automatically!
+                    No study guide yet. Upload notes and click &quot;Generate Guide&quot; to create one!
                   </p>
                 </div>
               )}
