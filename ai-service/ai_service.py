@@ -8,8 +8,9 @@ This service can run as:
 
 Features:
 - Generates cumulative study guides organized by units
-- Only processes NEW uploads (saves Gemini API credits)
+- Only processes NEW uploads (saves API credits)
 - Analyzes chat for confusion patterns (aggregated, anonymous)
+- Supports both Google Gemini and OpenAI GPT
 
 PRIVACY ARCHITECTURE:
 - This service reads raw student data but NEVER exposes individual messages to teachers
@@ -32,9 +33,17 @@ load_dotenv()
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_SERVICE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
 
+# AI Provider configuration
+# Options: 'gemini' or 'openai'
+AI_PROVIDER = os.getenv('AI_PROVIDER', 'gemini').lower()
+
 # Gemini configuration
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
+
+# OpenAI configuration
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
 
 # Server configuration
 SERVER_PORT = int(os.getenv('AI_SERVICE_PORT', '5000'))
@@ -45,11 +54,30 @@ def check_env():
         print("Error: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
         print("Copy .env.example to .env and fill in your credentials")
         return False
-    if not GEMINI_API_KEY:
-        print("Error: GEMINI_API_KEY must be set")
-        print("Get your API key from https://aistudio.google.com/app/apikey")
+    
+    if AI_PROVIDER == 'gemini':
+        if not GEMINI_API_KEY:
+            print("Error: GEMINI_API_KEY must be set when using Gemini")
+            print("Get your API key from https://aistudio.google.com/app/apikey")
+            return False
+    elif AI_PROVIDER == 'openai':
+        if not OPENAI_API_KEY:
+            print("Error: OPENAI_API_KEY must be set when using OpenAI")
+            print("Get your API key from https://platform.openai.com/api-keys")
+            return False
+    else:
+        print(f"Error: Invalid AI_PROVIDER '{AI_PROVIDER}'. Must be 'gemini' or 'openai'")
         return False
+    
     return True
+
+def get_ai_provider_info() -> str:
+    """Get a string describing the current AI provider and model."""
+    if AI_PROVIDER == 'gemini':
+        return f"Google Gemini ({GEMINI_MODEL})"
+    elif AI_PROVIDER == 'openai':
+        return f"OpenAI ({OPENAI_MODEL})"
+    return "Unknown"
 
 # Initialize Supabase client (lazy)
 _supabase = None
@@ -159,7 +187,7 @@ Titles: {', '.join(titles)}
 Respond with ONLY the unit name, nothing else."""
 
     try:
-        response = call_gemini(prompt)
+        response = call_llm(prompt)
         return response.strip().strip('"').strip("'")[:50]  # Limit length
     except Exception as e:
         print(f"Error generating unit name: {e}")
@@ -244,7 +272,7 @@ FORMATTING GUIDELINES:
 Write in a friendly, encouraging tone suitable for students."""
 
     try:
-        return call_gemini(prompt)
+        return call_llm(prompt)
     except Exception as e:
         print(f"Error generating study guide: {e}")
         return f"Study guide generation failed. Please try again later.\n\nError: {str(e)}"
@@ -288,13 +316,23 @@ Only provide aggregated, anonymous insights about learning patterns.
 Keep the response concise (under 200 words)."""
 
     try:
-        return call_gemini(prompt)
+        return call_llm(prompt)
     except Exception as e:
         print(f"Error analyzing confusion: {e}")
         return f"Confusion analysis failed: {str(e)}"
 
 
-def call_gemini(prompt: str) -> str:
+def call_llm(prompt: str) -> str:
+    """Call the configured LLM provider to generate text."""
+    if AI_PROVIDER == 'gemini':
+        return _call_gemini(prompt)
+    elif AI_PROVIDER == 'openai':
+        return _call_openai(prompt)
+    else:
+        raise Exception(f"Unknown AI provider: {AI_PROVIDER}")
+
+
+def _call_gemini(prompt: str) -> str:
     """Call Google Gemini API to generate text."""
     import google.generativeai as genai
     
@@ -323,6 +361,33 @@ def call_gemini(prompt: str) -> str:
         return response.text
     except Exception as e:
         raise Exception(f"Gemini API error: {str(e)}")
+
+
+def _call_openai(prompt: str) -> str:
+    """Call OpenAI API to generate text."""
+    from openai import OpenAI
+    
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful educational assistant that creates study guides and analyzes learning patterns."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.7,
+            max_tokens=4096,
+        )
+        return response.choices[0].message.content or ""
+    except Exception as e:
+        raise Exception(f"OpenAI API error: {str(e)}")
 
 
 def store_insight(classroom_id: str, insight_type: str, content: str, unit_name: Optional[str] = None, metadata: Dict = None):
@@ -508,7 +573,11 @@ def run_server():
     
     @app.route('/health', methods=['GET'])
     def health():
-        return jsonify({'status': 'ok', 'model': GEMINI_MODEL})
+        return jsonify({
+            'status': 'ok',
+            'provider': AI_PROVIDER,
+            'model': GEMINI_MODEL if AI_PROVIDER == 'gemini' else OPENAI_MODEL
+        })
     
     @app.route('/generate', methods=['POST'])
     def generate():
@@ -526,9 +595,12 @@ def run_server():
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
     
+    provider_info = get_ai_provider_info()
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║           ClassroomCogni AI Service (HTTP Server)             ║
+║                                                               ║
+║  AI Provider: {provider_info:<46} ║
 ║                                                               ║
 ║  Endpoints:                                                   ║
 ║    GET  /health   - Health check                              ║
@@ -547,6 +619,7 @@ def main():
     if not check_env():
         sys.exit(1)
     
+    provider_info = get_ai_provider_info()
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║           ClassroomCogni AI Service                           ║
@@ -554,7 +627,7 @@ def main():
 ║  This service generates study guides and analyzes learning    ║
 ║  patterns while preserving student privacy.                   ║
 ║                                                               ║
-║  Powered by: Google Gemini ({GEMINI_MODEL})                   ║
+║  Powered by: {provider_info:<48} ║
 ║                                                               ║
 ║  PRIVACY: Teachers only see aggregated insights.              ║
 ║  Individual student messages are never exposed.               ║

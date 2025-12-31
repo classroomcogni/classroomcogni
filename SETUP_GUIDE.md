@@ -112,16 +112,27 @@ The app will be available at **http://localhost:3000**
 
 ## Step 4: Set Up the AI Service
 
-### 4.1 Get a Google Gemini API Key
+### 4.1 Choose Your AI Provider
 
-The AI service uses Google's Gemini API for text generation.
+The AI service supports two providers. Choose one:
+
+#### Option A: Google Gemini (Recommended - Free Tier Available)
 
 1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. Sign in with your Google account
 3. Click **"Create API Key"**
-4. Copy the generated key (you'll need it in step 4.3)
+4. Copy the generated key
 
 **Note:** The free tier includes generous usage limits suitable for classroom use.
+
+#### Option B: OpenAI GPT
+
+1. Go to [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Sign in or create an account
+3. Click **"Create new secret key"**
+4. Copy the generated key
+
+**Note:** OpenAI requires a paid account with credits.
 
 ### 4.2 Set Up Python Environment
 
@@ -172,12 +183,29 @@ notepad .env
 
 Update with your credentials:
 
+#### For Gemini:
 ```env
 SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_SERVICE_KEY=your-service-role-key-here
+
+AI_PROVIDER=gemini
 GEMINI_API_KEY=your-gemini-api-key-here
 GEMINI_MODEL=gemini-1.5-flash
 ```
+
+#### For OpenAI:
+```env
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_SERVICE_KEY=your-service-role-key-here
+
+AI_PROVIDER=openai
+OPENAI_API_KEY=your-openai-api-key-here
+OPENAI_MODEL=gpt-4o-mini
+```
+
+**Available Models:**
+- Gemini: `gemini-1.5-flash` (fast), `gemini-1.5-pro` (more capable)
+- OpenAI: `gpt-4o-mini` (fast/cheap), `gpt-4o` (more capable), `gpt-4-turbo`
 
 ⚠️ **Important**: Use the `service_role` key for Supabase, not the `anon` key. The AI service needs elevated permissions to read all classroom data.
 
