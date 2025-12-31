@@ -10,6 +10,24 @@ interface StudyGuideContentProps {
   content: string;
 }
 
+// Normalize LaTeX delimiters to standard $ and $$ format
+function normalizeLatex(text: string): string {
+  let result = text;
+  
+  // Convert \[...\] to $$...$$
+  result = result.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$');
+  
+  // Convert \(...\) to $...$
+  result = result.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+  
+  // Fix double-escaped backslashes in LaTeX commands (\\frac -> \frac)
+  result = result.replace(/\$([^$]+)\$/g, (match, inner) => {
+    return '$' + inner.replace(/\\\\/g, '\\') + '$';
+  });
+  
+  return result;
+}
+
 export default function StudyGuideContent({ content }: StudyGuideContentProps) {
   if (!content || content.trim() === '') {
     return (
@@ -18,6 +36,9 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
       </div>
     );
   }
+  
+  // Normalize LaTeX before rendering
+  const normalizedContent = normalizeLatex(content);
   const components: Components = {
     // Headings
     h1: ({ children }) => (
@@ -165,7 +186,7 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
         rehypePlugins={[rehypeKatex]}
         components={components}
       >
-        {content}
+        {normalizedContent}
       </ReactMarkdown>
     </div>
   );

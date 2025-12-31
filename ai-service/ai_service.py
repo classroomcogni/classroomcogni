@@ -481,8 +481,18 @@ INSTRUCTIONS:
 2. For each unit, provide SPECIFIC and DETAILED explanations - no vague placeholders
 3. Define every term and concept explicitly
 4. Include actual examples, not just "see examples"
-5. For math/science: write ALL equations using LaTeX (e.g., $E = mc^2$ for inline, $$\\int_a^b f(x)dx$$ for display)
-6. Use proper formatting for special characters and symbols
+
+MATH FORMATTING (CRITICAL):
+- For inline math, use single dollar signs: $x^2 + y^2 = z^2$
+- For display/block math, use double dollar signs on their own lines:
+$$
+E = mc^2
+$$
+- Use standard LaTeX commands: \\frac{{a}}{{b}}, \\sqrt{{x}}, \\sum, \\int, \\alpha, \\beta, etc.
+- Greek letters: $\\alpha$, $\\beta$, $\\gamma$, $\\theta$, $\\pi$, $\\Delta$
+- Fractions: $\\frac{{numerator}}{{denominator}}$
+- Subscripts/superscripts: $x_1$, $x^2$, $x_{{n+1}}$
+- DO NOT use \\( \\) or \\[ \\] delimiters - ONLY use $ and $$
 
 FORMAT:
 
@@ -522,7 +532,7 @@ FORMAT:
 IMPORTANT:
 - Be SPECIFIC and DETAILED - no filler content
 - Every section must have real, substantive content
-- Format all math properly with LaTeX
+- Format ALL math with LaTeX using $ for inline and $$ for display
 - Use tables for definitions and comparisons
 - Include actual worked examples where relevant"""
 
