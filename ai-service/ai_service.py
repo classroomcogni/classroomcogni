@@ -382,8 +382,7 @@ def _call_openai(prompt: str) -> str:
                     "content": prompt
                 }
             ],
-            temperature=0.7,
-            max_tokens=4096,
+            max_completion_tokens=4096,
         )
         return response.choices[0].message.content or ""
     except Exception as e:
