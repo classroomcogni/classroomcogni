@@ -336,6 +336,9 @@ def _call_gemini(prompt: str) -> str:
     """Call Google Gemini API to generate text."""
     import google.generativeai as genai
     
+    if not GEMINI_API_KEY:
+        raise Exception("GEMINI_API_KEY is not set")
+    
     genai.configure(api_key=GEMINI_API_KEY)
     
     generation_config = {
@@ -345,10 +348,10 @@ def _call_gemini(prompt: str) -> str:
     }
     
     safety_settings = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
     
     try:
@@ -358,14 +361,28 @@ def _call_gemini(prompt: str) -> str:
             safety_settings=safety_settings
         )
         response = model.generate_content(prompt)
+        
+        # Check if response was blocked
+        if not response.parts:
+            print(f"Gemini response blocked or empty. Candidates: {response.candidates}")
+            if response.candidates and response.candidates[0].finish_reason:
+                print(f"Finish reason: {response.candidates[0].finish_reason}")
+            return ""
+        
         return response.text
     except Exception as e:
+        print(f"Gemini API exception: {e}")
+        import traceback
+        traceback.print_exc()
         raise Exception(f"Gemini API error: {str(e)}")
 
 
 def _call_openai(prompt: str) -> str:
     """Call OpenAI API to generate text."""
     from openai import OpenAI
+    
+    if not OPENAI_API_KEY:
+        raise Exception("OPENAI_API_KEY is not set")
     
     client = OpenAI(api_key=OPENAI_API_KEY)
     
@@ -382,10 +399,15 @@ def _call_openai(prompt: str) -> str:
                     "content": prompt
                 }
             ],
-            max_completion_tokens=4096,
+            max_tokens=4096,
         )
-        return response.choices[0].message.content or ""
+        result = response.choices[0].message.content or ""
+        print(f"OpenAI returned {len(result)} chars")
+        return result
     except Exception as e:
+        print(f"OpenAI API exception: {e}")
+        import traceback
+        traceback.print_exc()
         raise Exception(f"OpenAI API error: {str(e)}")
 
 
@@ -440,7 +462,14 @@ def generate_study_guide_from_uploads(uploads: List[Dict]) -> str:
     for i, upload in enumerate(uploads, 1):
         title = upload.get('title', f'Note {i}')
         content = upload.get('content', '')
+        print(f"  Processing upload {i}: {title} ({len(content)} chars)")
         notes_text += f"\n--- Note {i}: {title} ---\n{content}\n"
+    
+    print(f"Total notes content length: {len(notes_text)} chars")
+    
+    # Check if we have any actual content
+    if len(notes_text.strip()) < 50:
+        return "No content found in uploads. Please add some notes first."
     
     # Truncate if too long (leave room for prompt)
     if len(notes_text) > 25000:
@@ -503,14 +532,25 @@ FORMATTING GUIDELINES:
 
 Write in a friendly, encouraging tone suitable for students."""
 
+    print(f"Calling LLM with prompt length: {len(prompt)} chars")
+    
     try:
         result = call_llm(prompt)
-        if not result or len(result.strip()) < 100:
-            return "Study guide generation returned empty content. Please try again."
+        print(f"LLM returned {len(result) if result else 0} chars")
+        
+        if not result:
+            return "Study guide generation returned no response from AI. Please check API configuration."
+        
+        if len(result.strip()) < 100:
+            print(f"LLM response too short: {result}")
+            return f"Study guide generation returned insufficient content. Response: {result[:200]}"
+        
         return result
     except Exception as e:
         print(f"Error generating study guide: {e}")
-        return f"Study guide generation failed. Please try again later.\n\nError: {str(e)}"
+        import traceback
+        traceback.print_exc()
+        return f"Study guide generation failed: {str(e)}"
 
 
 def process_classroom(classroom_id: str, force_regenerate: bool = False) -> Dict:
