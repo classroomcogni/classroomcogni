@@ -428,21 +428,104 @@ def update_or_create_study_guide(classroom_id: str, content: str, metadata: Dict
         )
 
 
+def generate_study_guide_from_uploads(uploads: List[Dict]) -> str:
+    """
+    Generate a single comprehensive study guide from all uploads.
+    
+    Takes all uploaded notes and sends them to the LLM to create
+    one study guide organized by unit/topic.
+    """
+    # Combine all notes into a single text
+    notes_text = ""
+    for i, upload in enumerate(uploads, 1):
+        title = upload.get('title', f'Note {i}')
+        content = upload.get('content', '')
+        notes_text += f"\n--- Note {i}: {title} ---\n{content}\n"
+    
+    # Truncate if too long (leave room for prompt)
+    if len(notes_text) > 25000:
+        notes_text = notes_text[:25000] + "\n\n[Additional notes truncated...]"
+    
+    prompt = f"""You are a helpful study assistant. Based on the following class notes, 
+create a comprehensive study guide organized by topic/unit.
+
+CLASS NOTES:
+{notes_text}
+
+Create a SINGLE comprehensive study guide. Structure it as follows:
+
+# 📚 Complete Study Guide
+
+## 📋 Course Overview
+A brief 2-3 sentence summary of what these notes cover overall.
+
+---
+
+Then organize the content into logical units/topics. For EACH unit, create a section:
+
+## Unit: [Topic Name]
+
+### 🔑 Key Concepts
+List and explain the main concepts with clear definitions.
+
+### 📝 Important Terms
+Key vocabulary with definitions (use a table if helpful).
+
+### 💡 Main Ideas
+Bullet points of the most important takeaways.
+
+### 🧮 Formulas & Equations (if applicable)
+Use LaTeX notation for any mathematical formulas:
+- Inline math: $formula$
+- Display math: $$formula$$
+
+### ❓ Review Questions
+2-3 questions to test understanding of this unit.
+
+---
+
+After all units, include:
+
+## 🎯 Final Review
+- Key connections between units
+- Most important concepts to remember
+- 3-5 comprehensive review questions covering multiple units
+
+FORMATTING GUIDELINES:
+- Use proper Markdown formatting with headers (##, ###)
+- Use bullet points and numbered lists for clarity
+- Use **bold** for important terms and *italics* for emphasis
+- Use `code blocks` for technical terms or commands
+- Use tables when comparing concepts
+- For math/science content, use LaTeX notation: $inline$ or $$display$$
+- Use blockquotes (>) for important notes or tips
+- Use horizontal rules (---) to separate units
+
+Write in a friendly, encouraging tone suitable for students."""
+
+    try:
+        result = call_llm(prompt)
+        if not result or len(result.strip()) < 100:
+            return "Study guide generation returned empty content. Please try again."
+        return result
+    except Exception as e:
+        print(f"Error generating study guide: {e}")
+        return f"Study guide generation failed. Please try again later.\n\nError: {str(e)}"
+
+
 def process_classroom(classroom_id: str, force_regenerate: bool = False) -> Dict:
     """
     Main processing function for a classroom.
     
     This orchestrates the entire AI pipeline:
-    1. Fetch data from Supabase
-    2. Check for new uploads (skip already processed ones)
-    3. Cluster ALL uploads into units
-    4. Generate a SINGLE cumulative study guide
-    5. Analyze confusion patterns
-    6. Store results back to Supabase
+    1. Fetch all uploads from Supabase
+    2. Generate a SINGLE comprehensive study guide from all uploads
+    3. Analyze confusion patterns
+    4. Store results back to Supabase
     
     Args:
         classroom_id: The classroom to process
-        force_regenerate: If True, regenerate even if no new uploads
+        force_regenerate: Unused, kept for API compatibility
         
     Returns:
         Dict with processing results
@@ -451,7 +534,6 @@ def process_classroom(classroom_id: str, force_regenerate: bool = False) -> Dict
         'success': True,
         'classroom_id': classroom_id,
         'uploads_processed': 0,
-        'new_uploads': 0,
         'message': ''
     }
     
@@ -469,49 +551,20 @@ def process_classroom(classroom_id: str, force_regenerate: bool = False) -> Dict
         print("No uploads to process.")
         return result
     
-    # Check which uploads are new
-    processed_ids = get_processed_upload_ids(classroom_id)
-    current_ids = set(u['id'] for u in uploads)
-    new_ids = current_ids - processed_ids
-    
-    print(f"Previously processed: {len(processed_ids)} uploads")
-    print(f"New uploads: {len(new_ids)}")
-    result['new_uploads'] = len(new_ids)
-    
-    # Skip if no new uploads (unless force regenerate)
-    if not new_ids and not force_regenerate:
-        result['message'] = 'No new uploads to process. Study guide is up to date.'
-        print("No new uploads. Skipping study guide generation.")
-        return result
-    
-    # Cluster ALL uploads into units
-    print("\nClustering uploads into units...")
-    clusters = cluster_uploads(uploads)
-    print(f"Created {len(clusters)} unit clusters")
-    
-    # Generate unit names for each cluster
-    print("\nGenerating unit names...")
-    unit_names = []
-    for cluster_id, cluster_items in clusters.items():
-        unit_name = generate_unit_name(cluster_items)
-        unit_names.append(unit_name)
-        print(f"  Unit {cluster_id + 1}: {unit_name} ({len(cluster_items)} notes)")
-    
-    # Generate a SINGLE cumulative study guide
-    print("\nGenerating cumulative study guide...")
-    study_guide = generate_cumulative_study_guide(clusters, unit_names)
+    # Generate study guide from ALL uploads
+    print("\nGenerating study guide from all uploads...")
+    study_guide = generate_study_guide_from_uploads(uploads)
     
     # Store/update the study guide
+    current_ids = [u['id'] for u in uploads]
     metadata = {
-        'processed_upload_ids': list(current_ids),
+        'processed_upload_ids': current_ids,
         'upload_count': len(uploads),
-        'unit_count': len(clusters),
-        'unit_names': unit_names,
         'last_updated': datetime.utcnow().isoformat()
     }
     update_or_create_study_guide(classroom_id, study_guide, metadata)
     
-    result['message'] = f'Study guide generated with {len(clusters)} units from {len(uploads)} uploads.'
+    result['message'] = f'Study guide generated from {len(uploads)} uploads.'
     
     # Analyze confusion patterns from chat (optional)
     print("\nAnalyzing confusion patterns...")
