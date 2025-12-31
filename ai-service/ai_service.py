@@ -163,14 +163,39 @@ create a clear, student-friendly study guide.
 CLASS NOTES:
 {combined_content}
 
-Create a study guide that:
-1. Summarizes the key concepts
-2. Lists important terms and definitions
-3. Highlights main ideas students should remember
-4. Includes 3-5 review questions
+Create a comprehensive study guide with the following structure:
 
-Format the guide clearly with headers and bullet points. Keep it concise but comprehensive.
-Write in a friendly, encouraging tone suitable for high school students."""
+## 📋 Overview
+A brief 2-3 sentence summary of what this unit covers.
+
+## 🔑 Key Concepts
+List and explain the main concepts with clear definitions.
+
+## 📝 Important Terms
+Create a table or list of key vocabulary with definitions.
+
+## 💡 Main Ideas to Remember
+Bullet points of the most important takeaways.
+
+## 🧮 Formulas & Equations (if applicable)
+Use LaTeX notation for any mathematical formulas. For inline math use $formula$ and for display math use $$formula$$.
+Examples:
+- Inline: The quadratic formula is $x = \\frac{{-b \\pm \\sqrt{{b^2-4ac}}}}{{2a}}$
+- Display: $$E = mc^2$$
+
+## ❓ Review Questions
+Include 3-5 questions to test understanding.
+
+FORMATTING GUIDELINES:
+- Use proper Markdown formatting with headers (##, ###)
+- Use bullet points and numbered lists for clarity
+- Use **bold** for important terms and *italics* for emphasis
+- Use `code blocks` for technical terms or commands
+- Use tables when comparing concepts
+- For math/science content, use LaTeX notation: $inline$ or $$display$$
+- Use blockquotes (>) for important notes or tips
+
+Write in a friendly, encouraging tone suitable for students."""
 
     try:
         return call_gemini(prompt)

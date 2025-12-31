@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { supabase, Classroom, Message, Upload, AIInsight, User } from '@/lib/supabase';
+import StudyGuideContent from '@/components/StudyGuideContent';
 
 type Channel = 'general' | 'study-guide' | 'insights';
 
@@ -574,17 +575,20 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                 studyGuides.map((guide) => (
                   <div
                     key={guide.id}
-                    className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]"
+                    className="bg-[#222529] rounded-lg p-5 border border-[#3f4147]"
                   >
-                    <div className="flex justify-between items-start mb-3">
-                      <h4 className="text-[#e01e5a] font-semibold text-lg">
-                        {guide.unit_name || 'Study Guide'}
-                      </h4>
-                      <span className="text-gray-500 text-xs">
+                    <div className="flex justify-between items-start mb-4 pb-3 border-b border-[#3f4147]">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">📖</span>
+                        <h4 className="text-[#e01e5a] font-semibold text-lg">
+                          {guide.unit_name || 'Study Guide'}
+                        </h4>
+                      </div>
+                      <span className="text-gray-500 text-xs bg-[#1a1d21] px-2 py-1 rounded">
                         {formatDate(guide.created_at)}
                       </span>
                     </div>
-                    <div className="text-gray-300 whitespace-pre-wrap">{guide.content}</div>
+                    <StudyGuideContent content={guide.content} />
                   </div>
                 ))
               ) : (
