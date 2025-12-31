@@ -11,6 +11,13 @@ interface StudyGuideContentProps {
 }
 
 export default function StudyGuideContent({ content }: StudyGuideContentProps) {
+  if (!content || content.trim() === '') {
+    return (
+      <div className="text-gray-400 italic py-4">
+        No content available. Try regenerating the study guide.
+      </div>
+    );
+  }
   const components: Components = {
     // Headings
     h1: ({ children }) => (

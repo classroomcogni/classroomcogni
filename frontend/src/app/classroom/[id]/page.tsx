@@ -588,7 +588,7 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                       </span>
                     </div>
                     <p className="text-gray-300 whitespace-pre-wrap line-clamp-4">
-                      {studyGuide.content}
+                      {studyGuide.content || 'No content available'}
                     </p>
                   </div>
                 ) : (
@@ -682,7 +682,7 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                       )}
                     </div>
                   </div>
-                  <StudyGuideContent content={studyGuide.content} />
+                  <StudyGuideContent content={studyGuide.content || ''} />
                 </div>
               ) : (
                 <div className="text-center py-8">
