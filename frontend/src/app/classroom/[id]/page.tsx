@@ -1,15 +1,19 @@
 'use client';
 
-import { useEffect, useState, useRef, use, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { supabase, Classroom, Message, Upload, AIInsight, User } from '@/lib/supabase';
 import StudyGuideContent from '@/components/StudyGuideContent';
+import InsightsDashboard from '@/components/InsightsDashboard';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 type Channel = 'general' | 'study-guide' | 'insights';
 
-export default function ClassroomPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id: classroomId } = use(params);
+export default function ClassroomPage() {
+  const params = useParams();
+  const classroomId = params.id as string;
   const { user, loading } = useAuth();
   const router = useRouter();
   
@@ -23,6 +27,13 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadContent, setUploadContent] = useState('');
+  const [uploadMode, setUploadMode] = useState<'text' | 'file' | 'camera'>('text');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isGeneratingGuide, setIsGeneratingGuide] = useState(false);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -169,6 +180,108 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
       setIsGeneratingInsights(false);
     }
   }, [classroomId, fetchInsights, AI_SERVICE_URL]);
+
+  const downloadStudyGuideAsPDF = useCallback(async () => {
+    const currentStudyGuide = insights.filter((i) => i.insight_type === 'study_guide')[0] || null;
+    if (!currentStudyGuide) return;
+    
+    try {
+      // Create a temporary container for the PDF content
+      const container = document.createElement('div');
+      container.id = 'pdf-export-container';
+      container.style.position = 'absolute';
+      container.style.left = '-9999px';
+      container.style.top = '0';
+      container.style.width = '210mm'; // A4 width
+      container.style.padding = '20mm';
+      container.style.backgroundColor = '#ffffff';
+      container.style.color = '#000000';
+      container.style.fontFamily = 'Arial, sans-serif';
+      container.style.fontSize = '12pt';
+      container.style.lineHeight = '1.6';
+      document.body.appendChild(container);
+
+      // Create a styled version of the study guide for PDF
+      const title = currentStudyGuide.unit_name || 'Complete Study Guide';
+      const date = new Date(currentStudyGuide.created_at).toLocaleDateString();
+      
+      // Create header
+      const header = document.createElement('div');
+      header.style.marginBottom = '20px';
+      header.style.borderBottom = '2px solid #e01e5a';
+      header.style.paddingBottom = '10px';
+      header.innerHTML = `
+        <h1 style="color: #e01e5a; font-size: 24px; margin: 0 0 5px 0; font-weight: bold;">${title}</h1>
+        <p style="color: #666; font-size: 12px; margin: 0;">Generated on ${date}</p>
+      `;
+      container.appendChild(header);
+
+      // Create content div with markdown (will be rendered by browser)
+      const contentDiv = document.createElement('div');
+      contentDiv.id = 'study-guide-pdf-content';
+      contentDiv.style.color = '#000';
+      contentDiv.style.lineHeight = '1.6';
+      // Convert markdown to basic HTML (simple conversion for PDF)
+      const markdown = currentStudyGuide.content || '';
+      // Simple markdown to HTML conversion for PDF
+      let html = markdown
+        .replace(/^# (.*$)/gim, '<h1 style="font-size: 20pt; font-weight: bold; margin-top: 20px; margin-bottom: 10px;">$1</h1>')
+        .replace(/^## (.*$)/gim, '<h2 style="font-size: 18pt; font-weight: bold; margin-top: 16px; margin-bottom: 8px;">$1</h2>')
+        .replace(/^### (.*$)/gim, '<h3 style="font-size: 16pt; font-weight: bold; margin-top: 14px; margin-bottom: 6px; color: #e01e5a;">$1</h3>')
+        .replace(/^\* (.*$)/gim, '<li style="margin-left: 20px;">$1</li>')
+        .replace(/^- (.*$)/gim, '<li style="margin-left: 20px;">$1</li>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/\n\n/g, '</p><p style="margin-bottom: 10px;">')
+        .replace(/\n/g, '<br>');
+      html = '<p style="margin-bottom: 10px;">' + html + '</p>';
+      contentDiv.innerHTML = html;
+      container.appendChild(contentDiv);
+
+      // Wait for any images or LaTeX to render
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Convert to canvas
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false,
+      });
+
+      // Remove temporary container
+      document.body.removeChild(container);
+
+      // Create PDF
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgScaledWidth = imgWidth * ratio;
+      const imgScaledHeight = imgHeight * ratio;
+
+      // Calculate how many pages needed
+      const totalPages = Math.ceil(imgScaledHeight / pdfHeight);
+      
+      for (let i = 0; i < totalPages; i++) {
+        if (i > 0) {
+          pdf.addPage();
+        }
+        const yPosition = -(i * pdfHeight);
+        pdf.addImage(imgData, 'PNG', 0, yPosition, imgScaledWidth, imgScaledHeight);
+      }
+
+      // Download the PDF
+      const fileName = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${Date.now()}.pdf`;
+      pdf.save(fileName);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please try again.');
+    }
+  }, [insights]);
 
   const fetchMembers = useCallback(async () => {
     const userIds = new Set<string>();
@@ -424,20 +537,158 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
     // Note: We don't need to update here - realtime subscription will replace the temp message
   };
 
+  // Process file upload
+  const handleFileSelect = async (file: File) => {
+    setSelectedFile(file);
+    setIsProcessingFile(true);
+    
+    try {
+      const fileType = file.type;
+      let content = '';
+      
+      if (fileType.startsWith('image/')) {
+        // Convert image to base64 data URL for LLM processing
+        const reader = new FileReader();
+        content = await new Promise<string>((resolve, reject) => {
+          reader.onload = (e) => {
+            if (e.target?.result) {
+              resolve(e.target.result as string);
+            } else {
+              reject(new Error('Failed to read image'));
+            }
+          };
+          reader.onerror = () => reject(new Error('Error reading image file'));
+          reader.readAsDataURL(file);
+        });
+      } else if (fileType === 'application/pdf') {
+        // Extract text from PDF using pdfjs-dist (dynamic import, browser only)
+        if (typeof window === 'undefined') {
+          throw new Error('PDF processing must be done in the browser');
+        }
+        
+        const pdfjsLib = await import('pdfjs-dist');
+        
+        // Configure worker for browser
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+        
+        const arrayBuffer = await file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        let fullText = '';
+        
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items
+            .map((item: any) => item.str)
+            .join(' ');
+          fullText += pageText + '\n';
+        }
+        
+        content = fullText;
+      } else if (fileType.startsWith('text/')) {
+        // Read text files directly
+        content = await file.text();
+      } else {
+        throw new Error('Unsupported file type. Please upload an image, PDF, or text file.');
+      }
+      
+      setUploadContent(content);
+      if (!uploadTitle.trim()) {
+        // Auto-generate title from filename
+        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+        setUploadTitle(nameWithoutExt);
+      }
+    } catch (error) {
+      console.error('Error processing file:', error);
+      alert(`Error processing file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsProcessingFile(false);
+    }
+  };
+
+  // Camera functions
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } // Use back camera if available
+      });
+      setCameraStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      alert('Could not access camera. Please check permissions.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  const capturePhoto = async () => {
+    if (!videoRef.current) return;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(videoRef.current, 0, 0);
+      const imageDataUrl = canvas.toDataURL('image/jpeg');
+      setCapturedImage(imageDataUrl);
+      
+      // Store base64 data URL directly (no OCR - LLM will process the image)
+      setUploadContent(imageDataUrl);
+      if (!uploadTitle.trim()) {
+        setUploadTitle('Camera Photo');
+      }
+      
+      stopCamera();
+      setIsProcessingFile(false);
+    }
+  };
+
+  // Cleanup camera on unmount or modal close
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
   const submitUpload = async () => {
     if (!user || !uploadTitle.trim() || !uploadContent.trim()) return;
+
+    // Determine file type based on content
+    let fileType = 'text';
+    if (uploadMode === 'file' && selectedFile) {
+      fileType = selectedFile.type || 'image';
+    } else if (uploadMode === 'camera' || uploadContent.startsWith('data:image/')) {
+      fileType = 'image';
+    }
 
     await supabase.from('uploads').insert({
       classroom_id: classroomId,
       user_id: user.id,
       title: uploadTitle,
       content: uploadContent,
-      file_type: 'text',
+      file_type: fileType,
     });
 
     setShowUploadModal(false);
     setUploadTitle('');
     setUploadContent('');
+    setSelectedFile(null);
+    setCapturedImage(null);
+    setUploadMode('text');
+    stopCamera();
     fetchUploads();
   };
 
@@ -472,11 +723,11 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
   const confusionSummaries = insights.filter((i) => i.insight_type === 'confusion_summary');
 
   return (
-    <div className="h-screen flex bg-[#1a1d21]">
+    <div className="h-screen flex bg-[#1a1d21] overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 bg-[#19171d] flex flex-col border-r border-[#3f4147]">
+      <div className="w-64 bg-[#19171d] flex flex-col border-r border-[#3f4147] overflow-hidden">
         {/* Workspace Header */}
-        <div className="p-4 border-b border-[#3f4147]">
+        <div className="p-4 border-b border-[#3f4147] flex-shrink-0">
           <button
             onClick={() => router.push('/dashboard')}
             className="text-gray-400 hover:text-white text-sm mb-2 flex items-center gap-1"
@@ -492,7 +743,7 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
         </div>
 
         {/* Channels */}
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 min-h-0">
           <div className="text-gray-400 text-xs font-semibold px-2 py-2">Channels</div>
           {/* Students see chat channels, teachers only see insights */}
           {user.role !== 'teacher' && (
@@ -563,77 +814,89 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Channel Header */}
-        <div className="h-14 border-b border-[#3f4147] flex items-center px-4 justify-between">
+        <div className="h-14 border-b border-[#3f4147] flex items-center px-4 justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-white font-bold">
               {activeChannel === 'insights' ? '📊 insights' : `# ${activeChannel}`}
             </span>
           </div>
-          {activeChannel !== 'insights' && (
-            <button
-              onClick={() => setShowUploadModal(true)}
-              className="bg-[#4a154b] text-white px-3 py-1 rounded text-sm hover:bg-[#611f69] transition"
-            >
-              📎 Upload Notes
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {activeChannel === 'insights' && user.role === 'teacher' && (
+              <button
+                onClick={() => generateInsights()}
+                disabled={isGeneratingInsights}
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2 ${
+                  isGeneratingInsights
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    : 'bg-[#2eb67d] hover:bg-[#27a06d] text-white'
+                }`}
+              >
+                {isGeneratingInsights ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <span>🤖</span>
+                    Refresh Insights
+                  </>
+                )}
+              </button>
+            )}
+            {activeChannel !== 'insights' && (
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="bg-[#4a154b] text-white px-3 py-1 rounded text-sm hover:bg-[#611f69] transition"
+              >
+                📎 Upload Notes
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Messages / Content Area */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 min-h-0">
           {activeChannel === 'insights' ? (
             // Teacher Insights View
             // PRIVACY NOTE: This view shows ONLY aggregated, anonymized insights
             // Teachers NEVER see individual student messages here
             <div className="space-y-6">
+              {/* Privacy Notice */}
               <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
-                <div className="flex justify-between items-start">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">🔒</span>
                   <div>
-                    <h3 className="text-white font-semibold mb-2 flex items-center gap-2">
-                      🔒 Privacy Notice
-                    </h3>
+                    <h3 className="text-white font-semibold mb-2">Privacy Notice</h3>
                     <p className="text-gray-400 text-sm">
                       This dashboard shows <strong>aggregated insights only</strong>. 
                       Individual student messages and identities are never displayed. 
                       AI analyzes patterns to help you understand class-wide learning needs.
                     </p>
                   </div>
-                  <button
-                    onClick={() => generateInsights()}
-                    disabled={isGeneratingInsights}
-                    className={`px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2 ${
-                      isGeneratingInsights
-                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                        : 'bg-[#2eb67d] hover:bg-[#27a06d] text-white'
-                    }`}
-                  >
-                    {isGeneratingInsights ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <span>🤖</span>
-                        Generate Insights
-                      </>
-                    )}
-                  </button>
                 </div>
                 {insightsError && (
                   <div className="mt-3 p-3 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">
                     <strong>Error:</strong> {insightsError}
                     <p className="text-xs mt-1 text-red-400">
-                      Make sure the AI service is running: <code className="bg-red-900/50 px-1 rounded">python ai_service.py --server</code>
+                      Make sure the AI service is running. In the <code className="bg-red-900/50 px-1 rounded">ai-service</code> directory, run: <code className="bg-red-900/50 px-1 rounded">start-server.bat</code> (Windows) or <code className="bg-red-900/50 px-1 rounded">python ai_service.py --server</code>
                     </p>
                   </div>
                 )}
               </div>
+
+              {/* Dashboard with Charts */}
+              <InsightsDashboard 
+                messages={messages}
+                uploads={uploads}
+                insights={insights}
+                members={members}
+              />
 
               {/* Confusion Topics - Show only the latest */}
               <div>
@@ -648,7 +911,7 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                 ) : (
                   <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
                     <p className="text-gray-500">
-                      No confusion analysis yet. Click &quot;Generate Insights&quot; to analyze student discussions.
+                      No confusion analysis yet. Click &quot;Refresh Insights&quot; in the header to analyze student discussions.
                     </p>
                   </div>
                 )}
@@ -663,9 +926,19 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                       <span className="text-[#e01e5a] font-medium">
                         {studyGuide.unit_name || 'Complete Study Guide'}
                       </span>
-                      <span className="text-gray-500 text-xs">
-                        Last updated: {formatDate(studyGuide.created_at)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={downloadStudyGuideAsPDF}
+                          className="px-2 py-1 bg-[#4a154b] hover:bg-[#611f69] text-white text-xs rounded transition-colors flex items-center gap-1"
+                          title="Download study guide as PDF"
+                        >
+                          <span>📥</span>
+                          PDF
+                        </button>
+                        <span className="text-gray-500 text-xs">
+                          Last updated: {formatDate(studyGuide.created_at)}
+                        </span>
+                      </div>
                     </div>
                     <div className="max-h-64 overflow-y-auto">
                       <StudyGuideContent content={studyGuide.content || ''} />
@@ -733,7 +1006,7 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                   <div className="mt-3 p-3 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">
                     <strong>Error:</strong> {generateError}
                     <p className="text-xs mt-1 text-red-400">
-                      Make sure the AI service is running: <code className="bg-red-900/50 px-1 rounded">python ai_service.py --server</code>
+                      Make sure the AI service is running. In the <code className="bg-red-900/50 px-1 rounded">ai-service</code> directory, run: <code className="bg-red-900/50 px-1 rounded">start-server.bat</code> (Windows) or <code className="bg-red-900/50 px-1 rounded">python ai_service.py --server</code>
                     </p>
                   </div>
                 )}
@@ -753,15 +1026,25 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                         {studyGuide.unit_name || 'Complete Study Guide'}
                       </h4>
                     </div>
-                    <div className="text-right">
-                      <span className="text-gray-500 text-xs bg-[#1a1d21] px-2 py-1 rounded block">
-                        Last updated: {formatDate(studyGuide.created_at)}
-                      </span>
-                      {studyGuide.metadata?.upload_count != null && (
-                        <span className="text-gray-600 text-xs mt-1 block">
-                          {String(studyGuide.metadata.upload_count)} notes • {String(studyGuide.metadata.unit_count || 1)} units
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={downloadStudyGuideAsPDF}
+                        className="px-3 py-1.5 bg-[#4a154b] hover:bg-[#611f69] text-white text-sm rounded transition-colors flex items-center gap-2"
+                        title="Download study guide as PDF"
+                      >
+                        <span>📥</span>
+                        Download PDF
+                      </button>
+                      <div className="text-right">
+                        <span className="text-gray-500 text-xs bg-[#1a1d21] px-2 py-1 rounded block">
+                          Last updated: {formatDate(studyGuide.created_at)}
                         </span>
-                      )}
+                        {studyGuide.metadata?.upload_count != null && (
+                          <span className="text-gray-600 text-xs mt-1 block">
+                            {String(studyGuide.metadata.upload_count)} notes • {String(studyGuide.metadata.unit_count || 1)} units
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <StudyGuideContent content={studyGuide.content || ''} />
@@ -854,13 +1137,16 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                     const isOwnUpload = upload.user_id === user?.id;
                     const displayName = upload.user?.display_name || (isOwnUpload ? user?.display_name : 'Unknown') || 'Unknown';
                     
+                    // Check if it's an image
+                    const isImage = upload.file_type?.startsWith('image/') || upload.content?.startsWith('data:image/');
+                    
                     return (
                       <div
                         key={`upload-${upload.id}-${index}`}
                         className={`flex gap-3 mb-4 p-2 rounded ${isOwnUpload ? 'flex-row-reverse' : ''}`}
                       >
                         <div className="w-9 h-9 bg-[#e01e5a] rounded flex items-center justify-center flex-shrink-0">
-                          <span className="text-white text-sm">📄</span>
+                          <span className="text-white text-sm">{isImage ? '📷' : '📄'}</span>
                         </div>
                         <div className={`max-w-[70%] ${isOwnUpload ? 'text-right' : ''}`}>
                           <div className={`flex items-baseline gap-2 ${isOwnUpload ? 'justify-end' : ''}`}>
@@ -872,11 +1158,35 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                             </span>
                           </div>
                           <div className="bg-[#222529] border border-[#3f4147] rounded-lg p-3 mt-1 text-left">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-2xl">📝</span>
-                              <span className="text-white font-medium">{upload.title}</span>
-                            </div>
-                            <p className="text-gray-400 text-sm line-clamp-3">{upload.content}</p>
+                            {isImage ? (
+                              // Image upload - show image preview
+                              <div className="space-y-2">
+                                {upload.title && (
+                                  <div className="text-white font-medium">{upload.title}</div>
+                                )}
+                                <div className="flex justify-center">
+                                  <img 
+                                    src={upload.content} 
+                                    alt={upload.title || 'Uploaded image'}
+                                    className="max-w-full max-h-96 rounded border border-[#3f4147] object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                                    loading="lazy"
+                                    onClick={(e) => {
+                                      // Open image in new tab on click for full view
+                                      window.open(e.currentTarget.src, '_blank');
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              // Text/PDF upload - show content
+                              <>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-2xl">📝</span>
+                                  <span className="text-white font-medium">{upload.title}</span>
+                                </div>
+                                <p className="text-gray-400 text-sm line-clamp-3 whitespace-pre-wrap break-words">{upload.content}</p>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -914,13 +1224,69 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
 
       {/* Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#222529] rounded-lg p-6 w-full max-w-lg mx-4">
-            <h2 className="text-white text-xl font-bold mb-4">Upload Notes</h2>
-            <p className="text-gray-400 text-sm mb-4">
-              Share your notes with the class. The AI will use these to generate study guides.
-            </p>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-hidden" onClick={() => {
+          setShowUploadModal(false);
+          stopCamera();
+        }}>
+          <div className="bg-[#222529] rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto overflow-x-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-white text-xl font-bold">Upload Notes</h2>
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  stopCamera();
+                }}
+                className="text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            
+            {/* Mode Tabs */}
+            <div className="flex gap-2 mb-4 border-b border-[#3f4147]">
+              <button
+                onClick={() => {
+                  setUploadMode('text');
+                  stopCamera();
+                }}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  uploadMode === 'text'
+                    ? 'text-white border-b-2 border-[#4a154b]'
+                    : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                📝 Text
+              </button>
+              <button
+                onClick={() => {
+                  setUploadMode('file');
+                  stopCamera();
+                }}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  uploadMode === 'file'
+                    ? 'text-white border-b-2 border-[#4a154b]'
+                    : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                📁 File
+              </button>
+              <button
+                onClick={() => {
+                  setUploadMode('camera');
+                  startCamera();
+                }}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  uploadMode === 'camera'
+                    ? 'text-white border-b-2 border-[#4a154b]'
+                    : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                📷 Camera
+              </button>
+            </div>
+
             <div className="space-y-4">
+              {/* Title Input */}
               <div>
                 <label className="block text-gray-300 text-sm mb-2">Title</label>
                 <input
@@ -931,28 +1297,195 @@ export default function ClassroomPage({ params }: { params: Promise<{ id: string
                   placeholder="e.g., Chapter 5 Notes - Cell Division"
                 />
               </div>
-              <div>
-                <label className="block text-gray-300 text-sm mb-2">Content</label>
-                <textarea
-                  value={uploadContent}
-                  onChange={(e) => setUploadContent(e.target.value)}
-                  className="w-full bg-[#1a1d21] border border-[#3f4147] rounded px-4 py-2 text-white focus:outline-none focus:border-[#4a154b] h-48 resize-none"
-                  placeholder="Paste your notes here..."
-                />
-              </div>
-              <div className="flex gap-3">
+
+              {/* Text Mode */}
+              {uploadMode === 'text' && (
+                <div>
+                  <label className="block text-gray-300 text-sm mb-2">Content</label>
+                  <textarea
+                    value={uploadContent}
+                    onChange={(e) => setUploadContent(e.target.value)}
+                    className="w-full bg-[#1a1d21] border border-[#3f4147] rounded px-4 py-2 text-white focus:outline-none focus:border-[#4a154b] h-48 resize-none"
+                    placeholder="Paste your notes here..."
+                  />
+                </div>
+              )}
+
+              {/* File Mode */}
+              {uploadMode === 'file' && (
+                <div>
+                  <label className="block text-gray-300 text-sm mb-2">Upload File</label>
+                  <div className="border-2 border-dashed border-[#3f4147] rounded-lg p-6 text-center">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,.pdf,.txt,.doc,.docx"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          handleFileSelect(file);
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    {!selectedFile ? (
+                      <div>
+                        <div className="text-4xl mb-2">📁</div>
+                        <p className="text-gray-400 text-sm mb-3">
+                          Click to select a file or drag and drop
+                        </p>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="bg-[#4a154b] text-white px-4 py-2 rounded hover:bg-[#611f69] transition"
+                        >
+                          Choose File
+                        </button>
+                        <p className="text-gray-500 text-xs mt-2">
+                          Supports: Images (JPG, PNG), PDFs, Text files
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="text-green-500 mb-2">✓ {selectedFile.name}</div>
+                        {isProcessingFile ? (
+                          <div className="text-gray-400 text-sm">Processing file...</div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setSelectedFile(null);
+                              setUploadContent('');
+                            }}
+                            className="text-red-400 text-sm hover:text-red-300"
+                          >
+                            Remove file
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {uploadContent && uploadContent.startsWith('data:image/') ? (
+                    <div className="mt-4">
+                      <label className="block text-gray-300 text-sm mb-2">Image Preview</label>
+                      <img 
+                        src={uploadContent} 
+                        alt="Upload preview" 
+                        className="max-w-full max-h-64 rounded border border-[#3f4147]"
+                      />
+                      <p className="text-gray-400 text-xs mt-2">Image will be sent directly to the LLM for processing</p>
+                    </div>
+                  ) : uploadContent ? (
+                    <div className="mt-4">
+                      <label className="block text-gray-300 text-sm mb-2">Content</label>
+                      <textarea
+                        value={uploadContent}
+                        onChange={(e) => setUploadContent(e.target.value)}
+                        className="w-full bg-[#1a1d21] border border-[#3f4147] rounded px-4 py-2 text-white focus:outline-none focus:border-[#4a154b] h-48 resize-none"
+                        placeholder="Content will appear here after processing..."
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Camera Mode */}
+              {uploadMode === 'camera' && (
+                <div>
+                  <label className="block text-gray-300 text-sm mb-2">Take Photo</label>
+                  {!capturedImage ? (
+                    <div className="border-2 border-[#3f4147] rounded-lg overflow-hidden">
+                      {cameraStream ? (
+                        <div className="relative">
+                          <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            className="w-full max-h-96 object-contain bg-black"
+                          />
+                          <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
+                            <button
+                              onClick={capturePhoto}
+                              className="bg-white rounded-full p-4 hover:bg-gray-200 transition"
+                            >
+                              <span className="text-2xl">📷</span>
+                            </button>
+                            <button
+                              onClick={stopCamera}
+                              className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-8 text-center">
+                          <div className="text-4xl mb-2">📷</div>
+                          <p className="text-gray-400 text-sm mb-3">
+                            Camera access needed to take photos
+                          </p>
+                          <button
+                            onClick={startCamera}
+                            className="bg-[#4a154b] text-white px-4 py-2 rounded hover:bg-[#611f69] transition"
+                          >
+                            Start Camera
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <img
+                        src={capturedImage}
+                        alt="Captured"
+                        className="w-full max-h-96 object-contain rounded-lg mb-2"
+                      />
+                      {isProcessingFile ? (
+                        <div className="text-gray-400 text-sm text-center">Processing image...</div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setCapturedImage(null);
+                              setUploadContent('');
+                              startCamera();
+                            }}
+                            className="flex-1 border border-[#3f4147] text-gray-300 py-2 rounded hover:bg-[#2c2d30] transition"
+                          >
+                            Retake
+                          </button>
+                        </div>
+                      )}
+                      {uploadContent && uploadContent.startsWith('data:image/') && (
+                        <div className="mt-4">
+                          <label className="block text-gray-300 text-sm mb-2">Image Preview</label>
+                          <img 
+                            src={uploadContent} 
+                            alt="Captured photo" 
+                            className="max-w-full max-h-64 rounded border border-[#3f4147]"
+                          />
+                          <p className="text-gray-400 text-xs mt-2">Image will be sent directly to the LLM for processing</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4 border-t border-[#3f4147]">
                 <button
-                  onClick={() => setShowUploadModal(false)}
+                  onClick={() => {
+                    setShowUploadModal(false);
+                    stopCamera();
+                  }}
                   className="flex-1 border border-[#3f4147] text-gray-300 py-2 rounded hover:bg-[#2c2d30] transition"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={submitUpload}
-                  disabled={!uploadTitle.trim() || !uploadContent.trim()}
-                  className="flex-1 bg-[#4a154b] text-white py-2 rounded hover:bg-[#611f69] transition disabled:opacity-50"
+                  disabled={!uploadTitle.trim() || !uploadContent.trim() || isProcessingFile}
+                  className="flex-1 bg-[#4a154b] text-white py-2 rounded hover:bg-[#611f69] transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Upload
+                  {isProcessingFile ? 'Processing...' : 'Upload'}
                 </button>
               </div>
             </div>

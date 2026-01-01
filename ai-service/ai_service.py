@@ -187,6 +187,16 @@ def call_llm(prompt: str) -> str:
         raise Exception(f"Unknown AI provider: {AI_PROVIDER}")
 
 
+def call_llm_with_images(prompt: str, image_uploads: List[Dict]) -> str:
+    """Call the configured LLM provider with images (vision capability)."""
+    if AI_PROVIDER == 'gemini':
+        return _call_gemini_with_images(prompt, image_uploads)
+    elif AI_PROVIDER == 'openai':
+        return _call_openai_with_images(prompt, image_uploads)
+    else:
+        raise Exception(f"Unknown AI provider: {AI_PROVIDER}")
+
+
 def _call_gemini(prompt: str) -> str:
     """Call Google Gemini API to generate text."""
     import google.generativeai as genai
@@ -232,6 +242,77 @@ def _call_gemini(prompt: str) -> str:
         raise Exception(f"Gemini API error: {str(e)}")
 
 
+def _call_gemini_with_images(prompt: str, image_uploads: List[Dict]) -> str:
+    """Call Google Gemini API with images (vision capability)."""
+    import google.generativeai as genai
+    import base64
+    import re
+    
+    if not GEMINI_API_KEY:
+        raise Exception("GEMINI_API_KEY is not set")
+    
+    genai.configure(api_key=GEMINI_API_KEY)
+    
+    generation_config = {
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "max_output_tokens": 16384,
+    }
+    
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
+    
+    try:
+        model = genai.GenerativeModel(
+            model_name=GEMINI_MODEL,
+            generation_config=generation_config,
+            safety_settings=safety_settings
+        )
+        
+        # Build content parts: text prompt + images
+        content_parts = [prompt]
+        
+        for img_upload in image_uploads:
+            img_data_url = img_upload['content']
+            title = img_upload['title']
+            
+            # Extract base64 data and mime type from data URL
+            match = re.match(r'data:image/(\w+);base64,(.+)', img_data_url)
+            if match:
+                mime_type = f"image/{match.group(1)}"
+                base64_data = match.group(2)
+                
+                # Decode base64 to bytes
+                image_bytes = base64.b64decode(base64_data)
+                
+                # Add image with description
+                content_parts.append({
+                    "mime_type": mime_type,
+                    "data": image_bytes
+                })
+                content_parts.append(f"\n[Image: {title}]\n")
+        
+        response = model.generate_content(content_parts)
+        
+        # Check if response was blocked
+        if not response.parts:
+            print(f"Gemini response blocked or empty. Candidates: {response.candidates}")
+            if response.candidates and response.candidates[0].finish_reason:
+                print(f"Finish reason: {response.candidates[0].finish_reason}")
+            return ""
+        
+        return response.text
+    except Exception as e:
+        print(f"Gemini API exception: {e}")
+        import traceback
+        traceback.print_exc()
+        raise Exception(f"Gemini API error: {str(e)}")
+
+
 def _call_openai(prompt: str) -> str:
     """Call OpenAI API to generate text."""
     from openai import OpenAI
@@ -258,6 +339,72 @@ def _call_openai(prompt: str) -> str:
         )
         result = response.choices[0].message.content or ""
         print(f"OpenAI returned {len(result)} chars")
+        return result
+    except Exception as e:
+        print(f"OpenAI API exception: {e}")
+        import traceback
+        traceback.print_exc()
+        raise Exception(f"OpenAI API error: {str(e)}")
+
+
+def _call_openai_with_images(prompt: str, image_uploads: List[Dict]) -> str:
+    """Call OpenAI API with images (vision capability)."""
+    from openai import OpenAI
+    import base64
+    import re
+    
+    if not OPENAI_API_KEY:
+        raise Exception("OPENAI_API_KEY is not set")
+    
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    
+    try:
+        # Build messages with images
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful educational assistant that creates study guides and analyzes learning patterns. You can process both text and images."
+            }
+        ]
+        
+        # Add user message with text and images
+        content = [{"type": "text", "text": prompt}]
+        
+        for img_upload in image_uploads:
+            img_data_url = img_upload['content']
+            title = img_upload['title']
+            
+            # Extract base64 data and mime type from data URL
+            match = re.match(r'data:image/(\w+);base64,(.+)', img_data_url)
+            if match:
+                mime_type = f"image/{match.group(1)}"
+                base64_data = match.group(2)
+                
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": img_data_url  # OpenAI accepts data URLs directly
+                    }
+                })
+                content.append({
+                    "type": "text",
+                    "text": f"[Image: {title}]"
+                })
+        
+        messages.append({
+            "role": "user",
+            "content": content
+        })
+        
+        # Use vision-capable model (gpt-4o-mini supports vision)
+        model = OPENAI_MODEL if 'gpt-4' in OPENAI_MODEL.lower() or 'o1' in OPENAI_MODEL.lower() else 'gpt-4o-mini'
+        
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_completion_tokens=16384,
+        )
+        result = response.choices[0].message.content or ""
         return result
     except Exception as e:
         print(f"OpenAI API exception: {e}")
@@ -311,23 +458,49 @@ def generate_study_guide_from_uploads(uploads: List[Dict]) -> str:
     
     Takes all uploaded notes and sends them to the LLM to create
     one study guide organized by unit/topic.
+    Supports both text and image uploads (images are sent directly to vision models).
     """
-    # Combine all notes into a single text
-    notes_text = ""
+    # Separate text and image uploads
+    text_uploads = []
+    image_uploads = []
+    
     for i, upload in enumerate(uploads, 1):
         title = upload.get('title', f'Note {i}')
         content = upload.get('content', '')
-        print(f"  Processing upload {i}: {title} ({len(content)} chars)")
-        notes_text += f"\n--- Note {i}: {title} ---\n{content}\n"
+        file_type = upload.get('file_type', 'text')
+        
+        # Check if content is a base64 image
+        is_image = content.startswith('data:image/') if content else False
+        
+        if is_image or file_type.startswith('image/'):
+            image_uploads.append({
+                'title': title,
+                'content': content,
+                'index': i
+            })
+            print(f"  Found image upload {i}: {title}")
+        else:
+            text_uploads.append({
+                'title': title,
+                'content': content,
+                'index': i
+            })
+            print(f"  Processing text upload {i}: {title} ({len(content)} chars)")
     
-    print(f"Total notes content length: {len(notes_text)} chars")
+    # Combine text notes
+    notes_text = ""
+    for upload in text_uploads:
+        notes_text += f"\n--- Note {upload['index']}: {upload['title']} ---\n{upload['content']}\n"
+    
+    print(f"Total text content length: {len(notes_text)} chars")
+    print(f"Total image uploads: {len(image_uploads)}")
     
     # Check if we have any actual content
-    if len(notes_text.strip()) < 50:
+    if len(notes_text.strip()) < 50 and len(image_uploads) == 0:
         return "No content found in uploads. Please add some notes first."
     
     prompt = f"""You are an expert academic tutor and study-guide designer.
-NOTES: {notes_text}
+NOTES: {notes_text if notes_text.strip() else "No text notes provided."}
 
 TASK:
 Given a student’s uploaded notes, create a comprehensive, high-quality study guide that is clearly separated by unit.
@@ -386,7 +559,11 @@ If multiple units are present, repeat the above structure for each unit.
     print(f"Calling LLM with prompt length: {len(prompt)} chars")
     
     try:
-        result = call_llm(prompt)
+        # If we have images, use vision-capable LLM call
+        if image_uploads:
+            result = call_llm_with_images(prompt, image_uploads)
+        else:
+            result = call_llm(prompt)
         print(f"LLM returned {len(result) if result else 0} chars")
         
         if not result:
