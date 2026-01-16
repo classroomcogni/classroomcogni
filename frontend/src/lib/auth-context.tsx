@@ -73,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, role: 'student' | 'teacher', displayName: string) => {
     console.log('🔐 SignUp attempt:', { email, role, displayName });
+    setLoading(true);
     
     let data, error;
     try {
@@ -85,11 +86,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('📡 Supabase signUp response:', { data, error });
     } catch (e) {
       console.error('❌ SignUp exception:', e);
+      setLoading(false);
       throw e;
     }
 
     if (error) {
       console.error('❌ SignUp error:', error);
+      setLoading(false);
       return { error };
     }
 
@@ -105,9 +108,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (profileError) {
         console.error('❌ Profile creation error:', profileError);
+        setLoading(false);
         return { error: profileError };
       }
       console.log('✅ Profile created successfully');
+      
+      // Fetch the user profile to set it in state
+      await fetchUserProfile(data.user.id);
     }
 
     return { error: null };
@@ -115,12 +122,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     console.log('🔐 SignIn attempt:', { email });
+    setLoading(true);
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
     console.log('📡 SignIn response:', { data, error });
-    return { error };
+    
+    if (error) {
+      setLoading(false);
+      return { error };
+    }
+    
+    // Wait for user profile to be fetched before returning
+    if (data.user) {
+      await fetchUserProfile(data.user.id);
+    }
+    
+    return { error: null };
   };
 
   const signOut = async () => {
