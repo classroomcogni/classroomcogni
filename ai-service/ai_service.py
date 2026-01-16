@@ -335,7 +335,7 @@ def _call_openai(prompt: str) -> str:
                     "content": prompt
                 }
             ],
-            max_completion_tokens=16384,
+            # max_completion_tokens=16384,
         )
         result = response.choices[0].message.content or ""
         print(f"OpenAI returned {len(result)} chars")
@@ -397,12 +397,12 @@ def _call_openai_with_images(prompt: str, image_uploads: List[Dict]) -> str:
         })
         
         # Use vision-capable model (gpt-4o-mini supports vision)
-        model = OPENAI_MODEL if 'gpt-4' in OPENAI_MODEL.lower() or 'o1' in OPENAI_MODEL.lower() else 'gpt-4o-mini'
+        # model = OPENAI_MODEL if 'gpt-4' in OPENAI_MODEL.lower() or 'o1' in OPENAI_MODEL.lower() else 'gpt-4o-mini'
         
         response = client.chat.completions.create(
-            model=model,
+            model=OPENAI_MODEL,
             messages=messages,
-            max_completion_tokens=16384,
+            # max_completion_tokens=16384,
         )
         result = response.choices[0].message.content or ""
         return result
@@ -507,11 +507,6 @@ NOTES:
 TASK:
 Create a comprehensive, cohesive study guide from these notes. Write it as a flowing, well-organized document that a student would actually want to read and study from — not a rigid template.
 
-CRITICAL RULES:
-- Use ONLY the information in the provided notes.
-- Do NOT invent topics, formulas, or examples not present in the notes.
-- Prioritize clarity, correctness, and usefulness for exam preparation.
-
 OUTPUT FORMAT REQUIREMENTS:
 - Use clean, structured Markdown.
 - Use LaTeX-style math formatting for all mathematical expressions:
@@ -519,6 +514,7 @@ OUTPUT FORMAT REQUIREMENTS:
   - Displayed equations: $$...$$
 - Preserve special symbols (∫, ∑, →, ≤, ≥, etc.) correctly.
 - Use headings, subheadings, bullet points, and spacing for readability.
+- If you need a literal dollar sign (currency or placeholder), escape it as \\\$ and do NOT wrap non-math words in $...$.
 
 GUIDELINES FOR CREATING THE STUDY GUIDE:
 
@@ -528,7 +524,7 @@ GUIDELINES FOR CREATING THE STUDY GUIDE:
 
 3. **Include Formulas & Key Information**: Present important formulas, rules, and facts clearly. For each formula, explain what the variables mean and when to use it.
 
-4. **Show Examples**: If the notes contain worked examples, include them with clear step-by-step explanations. Show the reasoning, not just the steps.
+4. **Show Examples**: Create (or use from the notes) worked examples with clear step-by-step explanations. Use blockquotes for examples. Show the reasoning, not just the steps.
 
 5. **Highlight Common Pitfalls**: Based on the notes, mention common mistakes or tricky areas students should watch out for.
 
