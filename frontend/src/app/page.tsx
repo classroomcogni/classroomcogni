@@ -17,32 +17,32 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#1a1d21]">
-        <div className="text-white text-xl">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">
+        <div className="text-[#202124] text-xl">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1a1d21] to-[#2c2d30] flex flex-col">
+    <div className="min-h-screen bg-[#f8f9fa] flex flex-col">
       {/* Header */}
-      <header className="p-6 flex justify-between items-center">
+      <header className="p-6 flex justify-between items-center bg-white border-b border-[#dadce0]">
         <div className="flex items-center gap-2">
-          <div className="w-10 h-10 bg-[#4a154b] rounded-lg flex items-center justify-center">
+          <div className="w-10 h-10 bg-[#1a73e8] rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-xl">C</span>
           </div>
-          <span className="text-white text-xl font-semibold">ClassroomCogni</span>
+          <span className="text-[#202124] text-xl font-semibold">ClassroomCogni</span>
         </div>
         <div className="flex gap-4">
           <Link 
             href="/login" 
-            className="text-white hover:text-gray-300 px-4 py-2"
+            className="text-[#5f6368] hover:text-[#202124] px-4 py-2"
           >
             Sign In
           </Link>
           <Link 
             href="/signup" 
-            className="bg-[#4a154b] text-white px-4 py-2 rounded-md hover:bg-[#611f69] transition"
+            className="bg-[#1a73e8] text-white px-4 py-2 rounded-md hover:bg-[#1765c1] transition"
           >
             Get Started
           </Link>
@@ -51,19 +51,19 @@ export default function Home() {
 
       {/* Hero Section */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-        <h1 className="text-5xl md:text-6xl font-bold text-white mb-6">
+        <h1 className="text-5xl md:text-6xl font-bold text-[#202124] mb-6">
           Privacy-First<br />
           <span className="text-[#e01e5a]">Classroom Collaboration</span>
         </h1>
-        <p className="text-gray-400 text-xl max-w-2xl mb-8">
-          A Slack-inspired platform where students collaborate naturally while AI 
+        <p className="text-[#5f6368] text-xl max-w-2xl mb-8">
+          A platform where students collaborate naturally while AI 
           organizes learning materials — without invasive monitoring.
         </p>
         
         <div className="flex gap-4 mb-12">
           <Link 
             href="/signup" 
-            className="bg-[#4a154b] text-white px-8 py-3 rounded-md text-lg font-medium hover:bg-[#611f69] transition"
+            className="bg-[#1a73e8] text-white px-8 py-3 rounded-md text-lg font-medium hover:bg-[#1765c1] transition"
           >
             Start Learning Together
           </Link>
@@ -71,24 +71,24 @@ export default function Home() {
 
         {/* Features */}
         <div className="grid md:grid-cols-3 gap-8 max-w-4xl mt-8">
-          <div className="bg-[#222529] p-6 rounded-lg">
+          <div className="bg-white p-6 rounded-lg border border-[#dadce0]">
             <div className="text-3xl mb-3">💬</div>
-            <h3 className="text-white font-semibold mb-2">Natural Chat</h3>
-            <p className="text-gray-400 text-sm">
-              Students chat and share notes just like in Slack. No awkward interfaces.
+            <h3 className="text-[#202124] font-semibold mb-2">Natural Chat</h3>
+            <p className="text-[#5f6368] text-sm">
+              Students chat and share notes with ease. No awkward interfaces.
             </p>
           </div>
-          <div className="bg-[#222529] p-6 rounded-lg">
+          <div className="bg-white p-6 rounded-lg border border-[#dadce0]">
             <div className="text-3xl mb-3">🤖</div>
-            <h3 className="text-white font-semibold mb-2">Invisible AI</h3>
-            <p className="text-gray-400 text-sm">
+            <h3 className="text-[#202124] font-semibold mb-2">Invisible AI</h3>
+            <p className="text-[#5f6368] text-sm">
               AI works in the background to organize content and generate study guides.
             </p>
           </div>
-          <div className="bg-[#222529] p-6 rounded-lg">
+          <div className="bg-white p-6 rounded-lg border border-[#dadce0]">
             <div className="text-3xl mb-3">🔒</div>
-            <h3 className="text-white font-semibold mb-2">Privacy First</h3>
-            <p className="text-gray-400 text-sm">
+            <h3 className="text-[#202124] font-semibold mb-2">Privacy First</h3>
+            <p className="text-[#5f6368] text-sm">
               Teachers see aggregate insights only. No individual student surveillance.
             </p>
           </div>
@@ -96,7 +96,7 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="p-6 text-center text-gray-500 text-sm">
+      <footer className="p-6 text-center text-[#5f6368] text-sm">
         Built for the AI in Education Competition • Ethical AI Use
       </footer>
     </div>
