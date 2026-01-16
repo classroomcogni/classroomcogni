@@ -31,7 +31,7 @@ function normalizeLatex(text: string): string {
 export default function StudyGuideContent({ content }: StudyGuideContentProps) {
   if (!content || content.trim() === '') {
     return (
-      <div className="text-gray-400 italic py-4">
+      <div className="text-[#5f6368] italic py-4">
         No content available. Try regenerating the study guide.
       </div>
     );
@@ -42,46 +42,46 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
   const components: Components = {
     // Headings
     h1: ({ children }) => (
-      <h1 className="text-2xl font-bold text-white mt-6 mb-4 border-b border-[#3f4147] pb-2">
+      <h1 className="text-2xl font-bold text-[#202124] mt-6 mb-4 border-b border-[#dadce0] pb-2">
         {children}
       </h1>
     ),
     h2: ({ children }) => (
-      <h2 className="text-xl font-semibold text-white mt-5 mb-3">
+      <h2 className="text-xl font-semibold text-[#202124] mt-5 mb-3">
         {children}
       </h2>
     ),
     h3: ({ children }) => (
-      <h3 className="text-lg font-semibold text-[#e01e5a] mt-4 mb-2">
+      <h3 className="text-lg font-semibold text-[#1a73e8] mt-4 mb-2">
         {children}
       </h3>
     ),
     h4: ({ children }) => (
-      <h4 className="text-base font-semibold text-gray-200 mt-3 mb-2">
+      <h4 className="text-base font-semibold text-[#3c4043] mt-3 mb-2">
         {children}
       </h4>
     ),
     
     // Paragraphs
     p: ({ children }) => (
-      <p className="text-gray-300 mb-3 leading-relaxed">
+      <p className="text-[#3c4043] mb-3 leading-relaxed">
         {children}
       </p>
     ),
     
     // Lists
     ul: ({ children }) => (
-      <ul className="list-disc list-inside text-gray-300 mb-3 space-y-1 ml-2">
+      <ul className="list-disc text-[#3c4043] mb-3 space-y-1 ml-6 pl-1">
         {children}
       </ul>
     ),
     ol: ({ children }) => (
-      <ol className="list-decimal list-inside text-gray-300 mb-3 space-y-1 ml-2">
+      <ol className="list-decimal text-[#3c4043] mb-3 space-y-1 ml-6 pl-1">
         {children}
       </ol>
     ),
     li: ({ children }) => (
-      <li className="text-gray-300">
+      <li className="text-[#3c4043] pl-1">
         {children}
       </li>
     ),
@@ -91,26 +91,26 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
       const isInline = !className;
       if (isInline) {
         return (
-          <code className="bg-[#1a1d21] text-[#e01e5a] px-1.5 py-0.5 rounded text-sm font-mono">
+          <code className="bg-[#f1f3f4] text-[#d93025] px-1.5 py-0.5 rounded text-sm font-mono">
             {children}
           </code>
         );
       }
       return (
-        <code className={`${className} block bg-[#1a1d21] p-4 rounded-lg overflow-x-auto text-sm font-mono text-gray-300`} {...props}>
+        <code className={`${className} block bg-[#f8f9fa] p-4 rounded-lg overflow-x-auto text-sm font-mono text-[#3c4043] border border-[#dadce0]`} {...props}>
           {children}
         </code>
       );
     },
     pre: ({ children }) => (
-      <pre className="bg-[#1a1d21] rounded-lg mb-3 overflow-x-auto">
+      <pre className="bg-[#f8f9fa] rounded-lg mb-3 overflow-x-auto border border-[#dadce0]">
         {children}
       </pre>
     ),
     
     // Blockquotes
     blockquote: ({ children }) => (
-      <blockquote className="border-l-4 border-[#e01e5a] pl-4 my-3 text-gray-400 italic">
+      <blockquote className="border-l-4 border-[#1a73e8] pl-4 my-3 text-[#5f6368] italic bg-[#f8f9fa] py-2 rounded-r">
         {children}
       </blockquote>
     ),
@@ -118,33 +118,33 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
     // Tables
     table: ({ children }) => (
       <div className="overflow-x-auto mb-4">
-        <table className="min-w-full border border-[#3f4147] rounded-lg overflow-hidden">
+        <table className="min-w-full border border-[#dadce0] rounded-lg overflow-hidden">
           {children}
         </table>
       </div>
     ),
     thead: ({ children }) => (
-      <thead className="bg-[#1a1d21]">
+      <thead className="bg-[#f1f3f4]">
         {children}
       </thead>
     ),
     tbody: ({ children }) => (
-      <tbody className="divide-y divide-[#3f4147]">
+      <tbody className="divide-y divide-[#dadce0] bg-white">
         {children}
       </tbody>
     ),
     tr: ({ children }) => (
-      <tr className="hover:bg-[#2a2d31]">
+      <tr className="hover:bg-[#f8f9fa]">
         {children}
       </tr>
     ),
     th: ({ children }) => (
-      <th className="px-4 py-2 text-left text-white font-semibold border-b border-[#3f4147]">
+      <th className="px-4 py-2 text-left text-[#202124] font-semibold border-b border-[#dadce0]">
         {children}
       </th>
     ),
     td: ({ children }) => (
-      <td className="px-4 py-2 text-gray-300">
+      <td className="px-4 py-2 text-[#3c4043]">
         {children}
       </td>
     ),
@@ -155,7 +155,7 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
         href={href} 
         target="_blank" 
         rel="noopener noreferrer"
-        className="text-[#1d9bd1] hover:underline"
+        className="text-[#1a73e8] hover:underline"
       >
         {children}
       </a>
@@ -163,24 +163,24 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
     
     // Horizontal rule
     hr: () => (
-      <hr className="border-[#3f4147] my-4" />
+      <hr className="border-[#dadce0] my-4" />
     ),
     
     // Strong and emphasis
     strong: ({ children }) => (
-      <strong className="font-bold text-white">
+      <strong className="font-bold text-[#202124]">
         {children}
       </strong>
     ),
     em: ({ children }) => (
-      <em className="italic text-gray-200">
+      <em className="italic text-[#3c4043]">
         {children}
       </em>
     ),
   };
 
   return (
-    <div className="study-guide-content prose prose-invert max-w-none">
+    <div className="study-guide-content prose max-w-none">
       <ReactMarkdown
         remarkPlugins={[remarkMath, remarkGfm]}
         rehypePlugins={[rehypeKatex]}

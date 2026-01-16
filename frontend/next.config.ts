@@ -14,6 +14,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  turbopack: {},
   webpack: (config, { isServer }) => {
     // Fix for pdfjs-dist in Next.js
     if (!isServer) {

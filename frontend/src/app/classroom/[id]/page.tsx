@@ -3,13 +3,13 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { supabase, Classroom, Message, Upload, AIInsight, User } from '@/lib/supabase';
+import { supabase, Classroom, Message, Upload, AIInsight, User, Announcement } from '@/lib/supabase';
 import StudyGuideContent from '@/components/StudyGuideContent';
 import InsightsDashboard from '@/components/InsightsDashboard';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 
-type Channel = 'general' | 'study-guide' | 'insights';
+type Channel = 'general' | 'study-guide' | 'announcements' | 'insights';
 
 export default function ClassroomPage() {
   const params = useParams();
@@ -41,6 +41,15 @@ export default function ClassroomPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Cache for user data to avoid repeated fetches
   const [userCache, setUserCache] = useState<Record<string, User>>({});
+  // Announcements state
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [newAnnouncementTitle, setNewAnnouncementTitle] = useState('');
+  const [newAnnouncementContent, setNewAnnouncementContent] = useState('');
+  const [announcementNotification, setAnnouncementNotification] = useState<Announcement | null>(null);
+  const [showMembersPanel, setShowMembersPanel] = useState(false);
+  const [isEditingGuide, setIsEditingGuide] = useState(false);
+  const [editedGuideContent, setEditedGuideContent] = useState('');
+  const [isSavingGuide, setIsSavingGuide] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -101,10 +110,20 @@ export default function ClassroomPage() {
     setInsights(data || []);
   }, [classroomId]);
 
+  const fetchAnnouncements = useCallback(async () => {
+    const { data } = await supabase
+      .from('announcements')
+      .select('*, user:users(*)')
+      .eq('classroom_id', classroomId)
+      .order('created_at', { ascending: true });
+    setAnnouncements(data || []);
+  }, [classroomId]);
+
   // AI Service URL - can be configured via environment variable
   const AI_SERVICE_URL = process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:5000';
 
-  const generateStudyGuide = useCallback(async (force: boolean = false) => {
+  const generateStudyGuide = useCallback(async () => {
+    console.log("Generating study guide");
     setIsGeneratingGuide(true);
     setGenerateError(null);
     
@@ -116,7 +135,6 @@ export default function ClassroomPage() {
         },
         body: JSON.stringify({
           classroom_id: classroomId,
-          force: force,
         }),
       });
       
@@ -132,7 +150,7 @@ export default function ClassroomPage() {
       
       // Refresh insights to show the new study guide
       await fetchInsights();
-      
+      console.log(result);
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to connect to AI service';
@@ -181,31 +199,82 @@ export default function ClassroomPage() {
     }
   }, [classroomId, fetchInsights, AI_SERVICE_URL]);
 
+  const saveEditedStudyGuide = useCallback(async () => {
+    if (!user || user.role !== 'teacher') return;
+    const currentGuide = insights.find((i) => i.insight_type === 'study_guide') || null;
+    if (!currentGuide) {
+      setGenerateError('No study guide available to edit.');
+      return;
+    }
+    setIsSavingGuide(true);
+    setGenerateError(null);
+    try {
+      const updatedMetadata = {
+        ...(currentGuide.metadata || {}),
+        last_edited_by: user.id,
+        last_edited_at: new Date().toISOString(),
+        last_edited_by_name: user.display_name,
+      };
+      const { error } = await supabase
+        .from('ai_insights')
+        .update({
+          content: editedGuideContent,
+          metadata: updatedMetadata,
+        })
+        .eq('id', currentGuide.id);
+      if (error) {
+        throw new Error(error.message);
+      }
+      // Optimistic local update
+      setInsights((prev) =>
+        prev.map((insight) =>
+          insight.id === currentGuide.id
+            ? { ...insight, content: editedGuideContent, metadata: updatedMetadata }
+            : insight
+        )
+      );
+      setEditedGuideContent(editedGuideContent);
+      setIsEditingGuide(false);
+      // Refresh from backend to keep everyone in sync (assumes select RLS allows teacher)
+      await fetchInsights();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save study guide';
+      setGenerateError(message);
+    } finally {
+      setIsSavingGuide(false);
+    }
+  }, [editedGuideContent, fetchInsights, insights, user]);
+
   const downloadStudyGuideAsPDF = useCallback(async () => {
     const currentStudyGuide = insights.filter((i) => i.insight_type === 'study_guide')[0] || null;
     if (!currentStudyGuide) return;
     
     try {
-      // Create a temporary container for the PDF content
+      // Get the rendered study guide element (which has proper LaTeX rendering)
+      const sourceElement = document.getElementById('study-guide-content-for-pdf');
+      if (!sourceElement) {
+        alert('Study guide content not found. Please try again.');
+        return;
+      }
+
+      // Create a container for PDF export with print-friendly styles
       const container = document.createElement('div');
       container.id = 'pdf-export-container';
       container.style.position = 'absolute';
       container.style.left = '-9999px';
       container.style.top = '0';
-      container.style.width = '210mm'; // A4 width
+      container.style.width = '210mm';
       container.style.padding = '20mm';
       container.style.backgroundColor = '#ffffff';
-      container.style.color = '#000000';
       container.style.fontFamily = 'Arial, sans-serif';
       container.style.fontSize = '12pt';
       container.style.lineHeight = '1.6';
+      container.style.color = '#000000';
       document.body.appendChild(container);
 
-      // Create a styled version of the study guide for PDF
+      // Create header
       const title = currentStudyGuide.unit_name || 'Complete Study Guide';
       const date = new Date(currentStudyGuide.created_at).toLocaleDateString();
-      
-      // Create header
       const header = document.createElement('div');
       header.style.marginBottom = '20px';
       header.style.borderBottom = '2px solid #e01e5a';
@@ -216,30 +285,33 @@ export default function ClassroomPage() {
       `;
       container.appendChild(header);
 
-      // Create content div with markdown (will be rendered by browser)
-      const contentDiv = document.createElement('div');
-      contentDiv.id = 'study-guide-pdf-content';
-      contentDiv.style.color = '#000';
-      contentDiv.style.lineHeight = '1.6';
-      // Convert markdown to basic HTML (simple conversion for PDF)
-      const markdown = currentStudyGuide.content || '';
-      // Simple markdown to HTML conversion for PDF
-      let html = markdown
-        .replace(/^# (.*$)/gim, '<h1 style="font-size: 20pt; font-weight: bold; margin-top: 20px; margin-bottom: 10px;">$1</h1>')
-        .replace(/^## (.*$)/gim, '<h2 style="font-size: 18pt; font-weight: bold; margin-top: 16px; margin-bottom: 8px;">$1</h2>')
-        .replace(/^### (.*$)/gim, '<h3 style="font-size: 16pt; font-weight: bold; margin-top: 14px; margin-bottom: 6px; color: #e01e5a;">$1</h3>')
-        .replace(/^\* (.*$)/gim, '<li style="margin-left: 20px;">$1</li>')
-        .replace(/^- (.*$)/gim, '<li style="margin-left: 20px;">$1</li>')
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em>$1</em>')
-        .replace(/\n\n/g, '</p><p style="margin-bottom: 10px;">')
-        .replace(/\n/g, '<br>');
-      html = '<p style="margin-bottom: 10px;">' + html + '</p>';
-      contentDiv.innerHTML = html;
-      container.appendChild(contentDiv);
+      // Force print-friendly styling via scoped CSS so "text-white" etc never stays white in the PDF.
+      const style = document.createElement('style');
+      style.textContent = `
+        #pdf-export-container, #pdf-export-container * {
+          color: #000 !important;
+          background: transparent !important;
+          text-shadow: none !important;
+          box-shadow: none !important;
+        }
+        #pdf-export-container h1, #pdf-export-container h2 { color: #111 !important; }
+        #pdf-export-container h3 { color: #e01e5a !important; }
+        #pdf-export-container a { color: #1164a3 !important; text-decoration: underline !important; }
+        #pdf-export-container pre, #pdf-export-container code {
+          background: #f5f5f5 !important;
+          color: #111 !important;
+        }
+        #pdf-export-container ul, #pdf-export-container ol { padding-left: 18px !important; }
+        #pdf-export-container .katex, #pdf-export-container .katex * { color: #000 !important; }
+      `;
+      container.appendChild(style);
 
-      // Wait for any images or LaTeX to render
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Clone the rendered content (already KaTeX-rendered)
+      const contentClone = sourceElement.cloneNode(true) as HTMLElement;
+      container.appendChild(contentClone);
+
+      // Wait for KaTeX to fully render
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Convert to canvas
       const canvas = await html2canvas(container, {
@@ -252,26 +324,95 @@ export default function ClassroomPage() {
       // Remove temporary container
       document.body.removeChild(container);
 
-      // Create PDF
-      const imgData = canvas.toDataURL('image/png');
+      // Create PDF with proper multi-page support
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgScaledWidth = imgWidth * ratio;
+      
+      // Scale to fit page width only (not height) to keep text readable
+      const ratio = pdfWidth / imgWidth;
+      const imgScaledWidth = pdfWidth;
       const imgScaledHeight = imgHeight * ratio;
 
-      // Calculate how many pages needed
-      const totalPages = Math.ceil(imgScaledHeight / pdfHeight);
-      
-      for (let i = 0; i < totalPages; i++) {
-        if (i > 0) {
-          pdf.addPage();
+      // Page splitting: prefer splitting on blank rows (between lines) to avoid cutting text.
+      // Add a little breathing room at the top/bottom of each page.
+      const marginTopMm = 6;
+      const marginBottomMm = 6;
+      const usablePdfHeight = pdfHeight - marginTopMm - marginBottomMm;
+      const pageHeightInPixels = usablePdfHeight / ratio;
+      const readCtx = canvas.getContext('2d', { willReadFrequently: true });
+
+      const isBlankRow = (strip: Uint8ClampedArray, stripWidth: number, rowOffset: number) => {
+        // Sample every N pixels to keep this fast.
+        const step = 10;
+        let samples = 0;
+        let whites = 0;
+        const base = rowOffset * stripWidth * 4;
+        for (let x = 0; x < stripWidth; x += step) {
+          const idx = base + x * 4;
+          const r = strip[idx];
+          const g = strip[idx + 1];
+          const b = strip[idx + 2];
+          const a = strip[idx + 3];
+          samples++;
+          // Treat transparent or nearly-white as blank.
+          if (a < 8 || (r > 245 && g > 245 && b > 245)) whites++;
         }
-        const yPosition = -(i * pdfHeight);
-        pdf.addImage(imgData, 'PNG', 0, yPosition, imgScaledWidth, imgScaledHeight);
+        return whites / samples > 0.985;
+      };
+
+      const findSafeBreakY = (yTarget: number, range: number) => {
+        if (!readCtx) return Math.floor(yTarget);
+        const start = Math.max(0, Math.floor(yTarget - range));
+        const end = Math.min(imgHeight, Math.floor(yTarget + range));
+        const height = Math.max(1, end - start);
+        const strip = readCtx.getImageData(0, start, imgWidth, height).data;
+        const targetOffset = Math.min(height - 1, Math.max(0, Math.floor(yTarget) - start));
+
+        // Prefer breaking ABOVE the target (so content doesn't overflow the page).
+        for (let o = targetOffset; o >= 0; o--) {
+          if (isBlankRow(strip, imgWidth, o)) return start + o;
+        }
+        // If no blank row above, try below.
+        for (let o = targetOffset + 1; o < height; o++) {
+          if (isBlankRow(strip, imgWidth, o)) return start + o;
+        }
+        return Math.floor(yTarget);
+      };
+
+      let yStart = 0;
+      let pageIndex = 0;
+      while (yStart < imgHeight) {
+        if (pageIndex > 0) pdf.addPage();
+
+        const yTarget = yStart + pageHeightInPixels;
+        let yEnd = Math.min(imgHeight, yTarget);
+
+        // Only adjust if we still have more content after this page.
+        if (yEnd < imgHeight) {
+          yEnd = findSafeBreakY(yTarget, 140);
+          // Ensure progress; fallback if we couldn't find a good break.
+          if (yEnd <= yStart + 40) yEnd = Math.min(imgHeight, yTarget);
+        }
+
+        const sliceHeight = Math.max(1, Math.floor(yEnd - yStart));
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = imgWidth;
+        pageCanvas.height = sliceHeight;
+
+        const ctx = pageCanvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(canvas, 0, yStart, imgWidth, sliceHeight, 0, 0, imgWidth, sliceHeight);
+          const pageImgData = pageCanvas.toDataURL('image/png');
+          const pageScaledHeight = sliceHeight * ratio;
+          // Render content with top margin; bottom margin is achieved by using usablePdfHeight for slicing.
+          pdf.addImage(pageImgData, 'PNG', 0, marginTopMm, imgScaledWidth, pageScaledHeight);
+        }
+
+        yStart = yEnd;
+        pageIndex++;
       }
 
       // Download the PDF
@@ -355,6 +496,7 @@ export default function ClassroomPage() {
       fetchMessages();
       fetchUploads();
       fetchInsights();
+      fetchAnnouncements();
       fetchMembers();
       // Add current user to cache
       setUserCache(prev => ({ ...prev, [user.id]: user }));
@@ -485,10 +627,71 @@ export default function ClassroomPage() {
       )
       .subscribe();
 
+    // Subscribe to announcements (with notification for students)
+    const announcementsChannel = supabase
+      .channel(`classroom-${classroomId}-announcements`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'announcements',
+          filter: `classroom_id=eq.${classroomId}`,
+        },
+        async (payload) => {
+          console.log('📢 New announcement received:', payload.new);
+          const newAnnouncementId = payload.new.id;
+          
+          // Fetch the announcement with user data
+          const { data } = await supabase
+            .from('announcements')
+            .select('*, user:users(*)')
+            .eq('id', newAnnouncementId)
+            .single();
+          
+          if (data) {
+            setAnnouncements(prev => {
+              // Check if this is our own announcement (we have a temp version)
+              const tempIndex = prev.findIndex(a => 
+                a.id.startsWith('temp-') && 
+                a.user_id === data.user_id &&
+                a.title === data.title
+              );
+              
+              if (tempIndex !== -1) {
+                // Replace temp announcement with real one
+                const updated = [...prev];
+                updated[tempIndex] = data;
+                return updated;
+              }
+              
+              // Check if announcement already exists (avoid duplicates)
+              if (prev.some(a => a.id === newAnnouncementId)) {
+                return prev;
+              }
+              
+              // Add new announcement from another user (at the end for chronological order)
+              return [...prev, data];
+            });
+            
+            // Show notification for students (not for the teacher who posted)
+            if (user?.role === 'student' && data.user_id !== user?.id) {
+              setAnnouncementNotification(data);
+              // Auto-dismiss after 8 seconds
+              setTimeout(() => setAnnouncementNotification(null), 8000);
+            }
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Announcements realtime status:', status);
+      });
+
     return () => {
       supabase.removeChannel(messagesChannel);
       supabase.removeChannel(uploadsChannel);
       supabase.removeChannel(membersChannel);
+      supabase.removeChannel(announcementsChannel);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, classroomId]);
@@ -537,6 +740,52 @@ export default function ClassroomPage() {
     // Note: We don't need to update here - realtime subscription will replace the temp message
   };
 
+  // Post announcement (teacher only)
+  const postAnnouncement = async () => {
+    if (!user || user.role !== 'teacher' || !newAnnouncementTitle.trim() || !newAnnouncementContent.trim()) return;
+
+    const title = newAnnouncementTitle.trim();
+    const content = newAnnouncementContent.trim();
+    const tempId = `temp-${Date.now()}`;
+
+    // Clear form immediately for better UX
+    setNewAnnouncementTitle('');
+    setNewAnnouncementContent('');
+
+    // Optimistic update - add announcement immediately
+    const optimisticAnnouncement: Announcement = {
+      id: tempId,
+      classroom_id: classroomId,
+      user_id: user.id,
+      title,
+      content,
+      created_at: new Date().toISOString(),
+      user: user,
+    };
+    setAnnouncements(prev => [...prev, optimisticAnnouncement]);
+
+    const { data, error } = await supabase
+      .from('announcements')
+      .insert({
+        classroom_id: classroomId,
+        user_id: user.id,
+        title,
+        content,
+      })
+      .select('*, user:users(*)')
+      .single();
+
+    if (error) {
+      console.error('Error posting announcement:', error);
+      // Remove optimistic announcement on error
+      setAnnouncements(prev => prev.filter(a => a.id !== tempId));
+      alert('Failed to post announcement. Please try again.');
+    } else if (data) {
+      // Replace temp announcement with real one
+      setAnnouncements(prev => prev.map(a => a.id === tempId ? data : a));
+    }
+  };
+
   // Process file upload
   const handleFileSelect = async (file: File) => {
     setSelectedFile(file);
@@ -561,18 +810,22 @@ export default function ClassroomPage() {
           reader.readAsDataURL(file);
         });
       } else if (fileType === 'application/pdf') {
-        // Extract text from PDF using pdfjs-dist (dynamic import, browser only)
+        // Extract text from PDF using pdfjs-dist v3 (dynamic import, browser only)
         if (typeof window === 'undefined') {
           throw new Error('PDF processing must be done in the browser');
         }
-        
+
+        // pdfjs-dist v3 has simpler imports and better disableWorker support
         const pdfjsLib = await import('pdfjs-dist');
         
-        // Configure worker for browser
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+        // Disable the worker entirely - run on main thread
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '';
         
         const arrayBuffer = await file.arrayBuffer();
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        const loadingTask = pdfjsLib.getDocument({
+          data: new Uint8Array(arrayBuffer),
+          disableWorker: true,
+        } as any);
         const pdf = await loadingTask.promise;
         let fullText = '';
         
@@ -706,13 +959,12 @@ export default function ClassroomPage() {
     });
   };
 
-  if (loading || !user || !classroom) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#1a1d21]">
-        <div className="text-white text-xl">Loading...</div>
-      </div>
-    );
-  }
+  // Get avatar color based on user id
+  const getAvatarColor = (userId: string) => {
+    const colors = ['avatar-blue', 'avatar-green', 'avatar-orange', 'avatar-purple', 'avatar-red', 'avatar-teal'];
+    const index = userId.charCodeAt(0) % colors.length;
+    return colors[index];
+  };
 
   const filteredMessages = messages.filter(
     (m) => m.channel === (activeChannel === 'general' ? 'general' : 'study-guide')
@@ -722,158 +974,175 @@ export default function ClassroomPage() {
   const studyGuide = insights.filter((i) => i.insight_type === 'study_guide')[0] || null;
   const confusionSummaries = insights.filter((i) => i.insight_type === 'confusion_summary');
 
-  return (
-    <div className="h-screen flex bg-[#1a1d21] overflow-hidden">
-      {/* Sidebar */}
-      <div className="w-64 bg-[#19171d] flex flex-col border-r border-[#3f4147] overflow-hidden">
-        {/* Workspace Header */}
-        <div className="p-4 border-b border-[#3f4147] flex-shrink-0">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-gray-400 hover:text-white text-sm mb-2 flex items-center gap-1"
-          >
-            ← Back to Dashboard
-          </button>
-          <h2 className="text-white font-bold truncate">{classroom.name}</h2>
-          {user.role === 'teacher' && (
-            <div className="text-xs text-gray-500 mt-1">
-              Code: <span className="text-[#e01e5a]">{classroom.join_code}</span>
-            </div>
-          )}
-        </div>
+  useEffect(() => {
+    if (studyGuide && !isEditingGuide) {
+      setEditedGuideContent(studyGuide.content || '');
+    }
+  }, [studyGuide, isEditingGuide]);
 
-        {/* Channels */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 min-h-0">
-          <div className="text-gray-400 text-xs font-semibold px-2 py-2">Channels</div>
-          {/* Students see chat channels, teachers only see insights */}
+  if (loading || !user || !classroom) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-[#1a73e8] border-t-transparent rounded-full animate-spin"></div>
+          <div className="text-[#5f6368] text-lg font-medium">Loading classroom...</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-screen flex flex-col bg-[#f8f9fa] overflow-hidden">
+      {/* Top Header Bar */}
+      <header className="h-16 bg-white border-b border-[#dadce0] flex items-center px-6 flex-shrink-0 shadow-sm">
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4] p-2 rounded-full transition-colors mr-4"
+          title="Back to Dashboard"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+        </button>
+        <div className="flex items-center gap-3 flex-1">
+          <div className="w-10 h-10 bg-[#1a73e8] rounded-lg flex items-center justify-center">
+            <span className="text-white font-bold text-lg">{classroom.name.charAt(0).toUpperCase()}</span>
+          </div>
+          <div>
+            <h1 className="text-[#202124] font-medium text-lg leading-tight">{classroom.name}</h1>
+            {user.role === 'teacher' && (
+              <div className="text-[#5f6368] text-sm">
+                Class code: <span className="font-medium text-[#1a73e8]">{classroom.join_code}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Tab Navigation */}
+      <nav className="bg-white border-b border-[#dadce0] px-6 flex-shrink-0">
+        <div className="flex">
+          <button
+            onClick={() => setActiveChannel('announcements')}
+            className={`tab ${activeChannel === 'announcements' ? 'active' : ''}`}
+          >
+            Announcements
+          </button>
           {user.role !== 'teacher' && (
             <>
               <button
                 onClick={() => setActiveChannel('general')}
-                className={`w-full text-left px-2 py-1 rounded flex items-center gap-2 ${
-                  activeChannel === 'general'
-                    ? 'bg-[#1164a3] text-white'
-                    : 'text-gray-400 hover:bg-[#222529]'
-                }`}
+                className={`tab ${activeChannel === 'general' ? 'active' : ''}`}
               >
-                <span className="text-lg">#</span> general
+                Discussion
               </button>
               <button
                 onClick={() => setActiveChannel('study-guide')}
-                className={`w-full text-left px-2 py-1 rounded flex items-center gap-2 ${
-                  activeChannel === 'study-guide'
-                    ? 'bg-[#1164a3] text-white'
-                    : 'text-gray-400 hover:bg-[#222529]'
-                }`}
+                className={`tab ${activeChannel === 'study-guide' ? 'active' : ''}`}
               >
-                <span className="text-lg">#</span> study-guide
+                Study Guide
               </button>
             </>
           )}
           {user.role === 'teacher' && (
-            <button
-              onClick={() => setActiveChannel('insights')}
-              className={`w-full text-left px-2 py-1 rounded flex items-center gap-2 ${
-                activeChannel === 'insights'
-                  ? 'bg-[#1164a3] text-white'
-                  : 'text-gray-400 hover:bg-[#222529]'
-              }`}
-            >
-              <span className="text-lg">📊</span> insights
-            </button>
+            <>
+              <button
+                onClick={() => setActiveChannel('study-guide')}
+                className={`tab ${activeChannel === 'study-guide' ? 'active' : ''}`}
+              >
+                Study Guide
+              </button>
+              <button
+                onClick={() => setActiveChannel('insights')}
+                className={`tab ${activeChannel === 'insights' ? 'active' : ''}`}
+              >
+                Insights
+              </button>
+            </>
           )}
+          <button
+            onClick={() => setShowMembersPanel(true)}
+            className="tab ml-auto flex items-center gap-2"
+            title="Class members"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            People
+          </button>
+        </div>
+      </nav>
 
-          {/* Members */}
-          <div className="text-gray-400 text-xs font-semibold px-2 py-2 mt-4">
-            Members ({members.length})
-          </div>
-          <div className="space-y-1">
-            {/* Teachers first, then students - deduplicate by id */}
-            {Array.from(new Map(members.map(m => [m.id, m])).values())
-              .sort((a, b) => {
-                // Teachers first
-                if (a.role === 'teacher' && b.role !== 'teacher') return -1;
-                if (a.role !== 'teacher' && b.role === 'teacher') return 1;
-                return a.display_name.localeCompare(b.display_name);
-              })
-              .map((member) => (
-                <div
-                  key={member.id}
-                  className="px-2 py-1 text-gray-400 text-sm flex items-center gap-2"
+      {/* Main Content Area */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Action Bar */}
+          <div className="px-6 py-3 flex items-center justify-between flex-shrink-0 bg-[#f8f9fa]">
+            <div className="text-[#5f6368] text-sm font-medium">
+              {activeChannel === 'insights' && '📊 Class Insights'}
+              {activeChannel === 'announcements' && '📢 Announcements & Updates'}
+              {activeChannel === 'general' && '💬 Class Discussion'}
+              {activeChannel === 'study-guide' && '📚 Study Materials'}
+            </div>
+            <div className="flex items-center gap-3">
+              {activeChannel === 'insights' && user.role === 'teacher' && (
+                <button
+                  onClick={() => generateInsights()}
+                  disabled={isGeneratingInsights}
+                  className={`btn-primary flex items-center gap-2 ${isGeneratingInsights ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  <span className={`w-2 h-2 rounded-full ${member.role === 'teacher' ? 'bg-yellow-500' : 'bg-green-500'}`}></span>
-                  <span className="truncate">
-                    {member.display_name}
-                    {member.id === user?.id && ' (you)'}
-                    {member.role === 'teacher' && ' 👨‍🏫'}
-                  </span>
-                </div>
-              ))}
+                  {isGeneratingInsights ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Refresh Insights
+                    </>
+                  )}
+                </button>
+              )}
+              {activeChannel !== 'insights' && activeChannel !== 'announcements' && user.role !== 'teacher' && (
+                <button
+                  onClick={() => setShowUploadModal(true)}
+                  className="btn-primary flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Upload Notes
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* Channel Header */}
-        <div className="h-14 border-b border-[#3f4147] flex items-center px-4 justify-between flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-white font-bold">
-              {activeChannel === 'insights' ? '📊 insights' : `# ${activeChannel}`}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {activeChannel === 'insights' && user.role === 'teacher' && (
-              <button
-                onClick={() => generateInsights()}
-                disabled={isGeneratingInsights}
-                className={`px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2 ${
-                  isGeneratingInsights
-                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                    : 'bg-[#2eb67d] hover:bg-[#27a06d] text-white'
-                }`}
-              >
-                {isGeneratingInsights ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <span>🤖</span>
-                    Refresh Insights
-                  </>
-                )}
-              </button>
-            )}
-            {activeChannel !== 'insights' && (
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="bg-[#4a154b] text-white px-3 py-1 rounded text-sm hover:bg-[#611f69] transition"
-              >
-                📎 Upload Notes
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Messages / Content Area */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 min-h-0">
+          {/* Messages / Content Area */}
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-4xl mx-auto">
           {activeChannel === 'insights' ? (
             // Teacher Insights View
             // PRIVACY NOTE: This view shows ONLY aggregated, anonymized insights
             // Teachers NEVER see individual student messages here
             <div className="space-y-6">
               {/* Privacy Notice */}
-              <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
+              <div className="card p-4">
                 <div className="flex items-start gap-3">
-                  <span className="text-2xl">🔒</span>
+                  <div className="w-10 h-10 bg-[#e8f0fe] rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
                   <div>
-                    <h3 className="text-white font-semibold mb-2">Privacy Notice</h3>
-                    <p className="text-gray-400 text-sm">
+                    <h3 className="text-[#202124] font-medium mb-1">Privacy Notice</h3>
+                    <p className="text-[#5f6368] text-sm">
                       This dashboard shows <strong>aggregated insights only</strong>. 
                       Individual student messages and identities are never displayed. 
                       AI analyzes patterns to help you understand class-wide learning needs.
@@ -881,10 +1150,10 @@ export default function ClassroomPage() {
                   </div>
                 </div>
                 {insightsError && (
-                  <div className="mt-3 p-3 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
                     <strong>Error:</strong> {insightsError}
-                    <p className="text-xs mt-1 text-red-400">
-                      Make sure the AI service is running. In the <code className="bg-red-900/50 px-1 rounded">ai-service</code> directory, run: <code className="bg-red-900/50 px-1 rounded">start-server.bat</code> (Windows) or <code className="bg-red-900/50 px-1 rounded">python ai_service.py --server</code>
+                    <p className="text-xs mt-1 text-red-600">
+                      Make sure the AI service is running. In the <code className="bg-red-100 px-1 rounded">ai-service</code> directory, run: <code className="bg-red-100 px-1 rounded">start-server.bat</code> (Windows) or <code className="bg-red-100 px-1 rounded">python ai_service.py --server</code>
                     </p>
                   </div>
                 )}
@@ -899,81 +1168,149 @@ export default function ClassroomPage() {
               />
 
               {/* Confusion Topics - Show only the latest */}
-              <div>
-                <h3 className="text-white font-semibold mb-3">Common Confusion Topics</h3>
+              <div className="card p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-[#fef7e0] rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-[#f9ab00]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-[#202124] font-medium">Common Confusion Topics</h3>
+                    {confusionSummaries.length > 0 && (
+                      <span className="text-[#5f6368] text-xs">Last updated: {formatDate(confusionSummaries[0].created_at)}</span>
+                    )}
+                  </div>
+                </div>
                 {confusionSummaries.length > 0 ? (
-                  <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
-                    <div className="text-gray-400 text-xs mb-3">
-                      Last updated: {formatDate(confusionSummaries[0].created_at)}
-                    </div>
+                  <div className="border-t border-[#dadce0] pt-4">
                     <StudyGuideContent content={confusionSummaries[0].content || ''} />
                   </div>
                 ) : (
-                  <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
-                    <p className="text-gray-500">
-                      No confusion analysis yet. Click &quot;Refresh Insights&quot; in the header to analyze student discussions.
-                    </p>
-                  </div>
+                  <p className="text-[#5f6368] text-sm">
+                    No confusion analysis yet. Click &quot;Refresh Insights&quot; to analyze student discussions.
+                  </p>
                 )}
               </div>
 
-              {/* Study Guide Overview - Show only the latest */}
-              <div>
-                <h3 className="text-white font-semibold mb-3">Study Guide Preview</h3>
-                {studyGuide ? (
-                  <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
-                    <div className="flex justify-between items-start mb-3">
-                      <span className="text-[#e01e5a] font-medium">
-                        {studyGuide.unit_name || 'Complete Study Guide'}
-                      </span>
-                      <div className="flex items-center gap-2">
+            </div>
+          ) : activeChannel === 'announcements' ? (
+            // Announcements Channel - Teacher posts, students read
+            <div className="space-y-4">
+              {/* Teacher post input card */}
+              {user.role === 'teacher' && (
+                <div className="card p-4">
+                  <div className="flex items-start gap-3">
+                    <div className={`avatar ${getAvatarColor(user.id)}`}>
+                      {user.display_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        placeholder="Announcement title"
+                        value={newAnnouncementTitle}
+                        onChange={(e) => setNewAnnouncementTitle(e.target.value)}
+                        className="input w-full mb-2"
+                      />
+                      <textarea
+                        placeholder="Share something with your class..."
+                        value={newAnnouncementContent}
+                        onChange={(e) => setNewAnnouncementContent(e.target.value)}
+                        rows={3}
+                        className="input w-full resize-none"
+                      />
+                      <div className="flex justify-end mt-3">
                         <button
-                          onClick={downloadStudyGuideAsPDF}
-                          className="px-2 py-1 bg-[#4a154b] hover:bg-[#611f69] text-white text-xs rounded transition-colors flex items-center gap-1"
-                          title="Download study guide as PDF"
+                          onClick={postAnnouncement}
+                          disabled={!newAnnouncementTitle.trim() || !newAnnouncementContent.trim()}
+                          className="btn-primary"
                         >
-                          <span>📥</span>
-                          PDF
+                          Post
                         </button>
-                        <span className="text-gray-500 text-xs">
-                          Last updated: {formatDate(studyGuide.created_at)}
-                        </span>
                       </div>
                     </div>
-                    <div className="max-h-64 overflow-y-auto">
-                      <StudyGuideContent content={studyGuide.content || ''} />
-                    </div>
                   </div>
-                ) : (
-                  <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
-                    <p className="text-gray-500">
-                      No study guide generated yet. Students can generate one from the study-guide channel.
-                    </p>
+                </div>
+              )}
+
+              {announcements.length > 0 ? (
+                <div className="space-y-4">
+                  {announcements.map((announcement) => {
+                    const isOwn = announcement.user_id === user?.id;
+                    const authorName = announcement.user?.display_name || 'Teacher';
+                    return (
+                      <div 
+                        key={announcement.id} 
+                        className="card p-4 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="avatar avatar-green flex-shrink-0">
+                            {authorName[0]?.toUpperCase() || '?'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                              <span className="text-[#202124] font-medium">
+                                {isOwn ? 'You' : authorName}
+                              </span>
+                              <span className="text-[#5f6368] text-sm">
+                                {new Date(announcement.created_at).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                            <h4 className="text-[#1a73e8] font-medium text-lg mt-1">
+                              {announcement.title}
+                            </h4>
+                            <p className="text-[#3c4043] mt-2 whitespace-pre-wrap">{announcement.content}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="card p-12 text-center">
+                  <div className="w-16 h-16 bg-[#e8f0fe] rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-8 h-8 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+                    </svg>
                   </div>
-                )}
-              </div>
+                  <h3 className="text-[#202124] font-medium text-lg mb-2">No announcements yet</h3>
+                  <p className="text-[#5f6368]">
+                    {user.role === 'teacher' 
+                      ? 'Share important updates with your class using the form above.'
+                      : 'Your teacher will post announcements here.'}
+                  </p>
+                </div>
+              )}
             </div>
           ) : activeChannel === 'study-guide' ? (
             // Study Guide Channel - Shows AI-generated guides
             <div className="space-y-4">
-              <div className="bg-[#222529] rounded-lg p-4 border border-[#3f4147]">
+              <div className="card p-5">
                 <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-white font-semibold mb-2">📚 AI-Generated Study Guide</h3>
-                    <p className="text-gray-400 text-sm">
-                      This cumulative study guide is generated from all uploaded class notes,
-                      organized by topic/unit to help you study effectively.
-                    </p>
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 bg-[#fce8e6] rounded-lg flex items-center justify-center flex-shrink-0">
+                      <svg className="w-6 h-6 text-[#d93025]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-[#202124] font-medium text-lg mb-1">AI-Generated Study Guide</h3>
+                      <p className="text-[#5f6368] text-sm">
+                        A comprehensive guide generated from all uploaded class notes,
+                        organized by topic to help you study effectively.
+                      </p>
+                    </div>
                   </div>
                   <div className="flex flex-col gap-2">
                     <button
-                      onClick={() => generateStudyGuide(false)}
+                      onClick={() => generateStudyGuide()}
                       disabled={isGeneratingGuide || uploads.length === 0}
-                      className={`px-4 py-2 rounded text-sm font-medium transition-colors flex items-center gap-2 ${
-                        isGeneratingGuide || uploads.length === 0
-                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                          : 'bg-[#2eb67d] hover:bg-[#27a06d] text-white'
-                      }`}
+                      className={`btn-primary flex items-center gap-2 ${isGeneratingGuide || uploads.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {isGeneratingGuide ? (
                         <>
@@ -985,82 +1322,128 @@ export default function ClassroomPage() {
                         </>
                       ) : (
                         <>
-                          <span>🤖</span>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                          </svg>
                           {studyGuide ? 'Update Guide' : 'Generate Guide'}
                         </>
                       )}
                     </button>
-                    {studyGuide && (
-                      <button
-                        onClick={() => generateStudyGuide(true)}
-                        disabled={isGeneratingGuide}
-                        className="px-3 py-1 rounded text-xs text-gray-400 hover:text-white hover:bg-[#3f4147] transition-colors"
-                        title="Force regenerate the entire study guide"
-                      >
-                        🔄 Force Regenerate
-                      </button>
-                    )}
                   </div>
                 </div>
                 {generateError && (
-                  <div className="mt-3 p-3 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
                     <strong>Error:</strong> {generateError}
-                    <p className="text-xs mt-1 text-red-400">
-                      Make sure the AI service is running. In the <code className="bg-red-900/50 px-1 rounded">ai-service</code> directory, run: <code className="bg-red-900/50 px-1 rounded">start-server.bat</code> (Windows) or <code className="bg-red-900/50 px-1 rounded">python ai_service.py --server</code>
+                    <p className="text-xs mt-1 text-red-600">
+                      Make sure the AI service is running. In the <code className="bg-red-100 px-1 rounded">ai-service</code> directory, run: <code className="bg-red-100 px-1 rounded">start-server.bat</code> (Windows) or <code className="bg-red-100 px-1 rounded">python ai_service.py --server</code>
                     </p>
                   </div>
                 )}
                 {uploads.length === 0 && (
-                  <div className="mt-3 p-3 bg-yellow-900/30 border border-yellow-700 rounded text-yellow-300 text-sm">
-                    📝 Upload some notes first before generating a study guide.
+                  <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    Upload some notes first before generating a study guide.
                   </div>
                 )}
               </div>
 
               {studyGuide ? (
-                <div className="bg-[#222529] rounded-lg p-5 border border-[#3f4147]">
-                  <div className="flex justify-between items-start mb-4 pb-3 border-b border-[#3f4147]">
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl">📖</span>
-                      <h4 className="text-[#e01e5a] font-semibold text-lg">
+                <div className="card p-5">
+                  <div className="flex justify-between items-start mb-4 pb-4 border-b border-[#dadce0]">
+                    <div>
+                      <h4 className="text-[#202124] font-medium text-lg">
                         {studyGuide.unit_name || 'Complete Study Guide'}
                       </h4>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={downloadStudyGuideAsPDF}
-                        className="px-3 py-1.5 bg-[#4a154b] hover:bg-[#611f69] text-white text-sm rounded transition-colors flex items-center gap-2"
-                        title="Download study guide as PDF"
-                      >
-                        <span>📥</span>
-                        Download PDF
-                      </button>
-                      <div className="text-right">
-                        <span className="text-gray-500 text-xs bg-[#1a1d21] px-2 py-1 rounded block">
-                          Last updated: {formatDate(studyGuide.created_at)}
-                        </span>
+                      <div className="flex items-center gap-3 mt-1 text-sm text-[#5f6368]">
+                        <span>Last updated: {formatDate(studyGuide.created_at)}</span>
                         {studyGuide.metadata?.upload_count != null && (
-                          <span className="text-gray-600 text-xs mt-1 block">
-                            {String(studyGuide.metadata.upload_count)} notes • {String(studyGuide.metadata.unit_count || 1)} units
-                          </span>
+                          <span>• {String(studyGuide.metadata.upload_count)} notes • {String(studyGuide.metadata.unit_count || 1)} units</span>
                         )}
                       </div>
                     </div>
+                    <div className="flex items-center gap-2">
+                      {user.role === 'teacher' && (
+                        <>
+                          {isEditingGuide ? (
+                            <>
+                              <button
+                                onClick={saveEditedStudyGuide}
+                                disabled={isSavingGuide}
+                                className="btn-primary py-1 px-3 text-sm"
+                              >
+                                {isSavingGuide ? 'Saving...' : 'Save'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setIsEditingGuide(false);
+                                  setEditedGuideContent('');
+                                }}
+                                disabled={isSavingGuide}
+                                className="btn-secondary py-1 px-3 text-sm"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setIsEditingGuide(true);
+                                setEditedGuideContent(studyGuide.content || '');
+                              }}
+                              className="btn-secondary py-1 px-3 text-sm"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </>
+                      )}
+                      <button
+                        onClick={downloadStudyGuideAsPDF}
+                        className="btn-secondary flex items-center gap-2"
+                        title="Download study guide as PDF"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Download PDF
+                      </button>
+                    </div>
                   </div>
-                  <StudyGuideContent content={studyGuide.content || ''} />
+                  {isEditingGuide ? (
+                    <div className="space-y-3">
+                      <textarea
+                        value={editedGuideContent}
+                        onChange={(e) => setEditedGuideContent(e.target.value)}
+                        className="input w-full h-80 resize-none"
+                        placeholder="Edit study guide content..."
+                      />
+                      <p className="text-[#5f6368] text-xs">Edits are saved for the class and visible to students.</p>
+                    </div>
+                  ) : (
+                    <div id="study-guide-content-for-pdf">
+                      <StudyGuideContent content={editedGuideContent || studyGuide.content || ''} />
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-3">🤖</div>
-                  <p className="text-gray-400">
-                    No study guide yet. Upload notes and click &quot;Generate Guide&quot; to create one!
+                <div className="card p-12 text-center">
+                  <div className="w-16 h-16 bg-[#e8f0fe] rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-8 h-8 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-[#202124] font-medium text-lg mb-2">No study guide yet</h3>
+                  <p className="text-[#5f6368]">
+                    Upload notes and click &quot;Generate Guide&quot; to create your personalized study guide!
                   </p>
                 </div>
               )}
 
               {/* Chat in study-guide channel */}
-              <div className="border-t border-[#3f4147] pt-4 mt-4">
-                <h4 className="text-gray-400 text-sm mb-3">Discussion</h4>
+              <div className="border-t border-[#dadce0] pt-4 mt-4">
+                <h4 className="text-[#5f6368] text-sm font-medium mb-3">Discussion</h4>
                 {filteredMessages.map((message, index) => {
                   const isOwnMessage = message.user_id === user?.id;
                   const displayName = message.user?.display_name || user?.display_name || 'Unknown';
@@ -1068,25 +1451,23 @@ export default function ClassroomPage() {
                   return (
                     <div 
                       key={`study-msg-${message.id}-${index}`} 
-                      className={`flex gap-3 mb-4 p-2 rounded ${isOwnMessage ? 'flex-row-reverse' : ''}`}
+                      className="flex gap-3 mb-4 p-3 card"
                     >
-                      <div className={`w-9 h-9 rounded flex items-center justify-center flex-shrink-0 ${isOwnMessage ? 'bg-[#2eb67d]' : 'bg-[#4a154b]'}`}>
-                        <span className="text-white text-sm">
-                          {displayName[0]?.toUpperCase() || '?'}
-                        </span>
+                      <div className={`avatar flex-shrink-0 ${getAvatarColor(message.user_id)}`}>
+                        {displayName[0]?.toUpperCase() || '?'}
                       </div>
-                      <div className={`flex-1 min-w-0 ${isOwnMessage ? 'text-right' : ''}`}>
-                        <div className={`flex items-baseline gap-2 ${isOwnMessage ? 'justify-end' : ''}`}>
-                          <span className="text-white font-semibold">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-[#202124] font-medium">
                             {isOwnMessage ? 'You' : displayName}
                           </span>
-                          <span className="text-gray-500 text-xs">
+                          <span className="text-[#5f6368] text-xs">
                             {formatTime(message.created_at)}
                           </span>
                         </div>
-                        <div className={`inline-block rounded-lg px-3 py-2 mt-1 ${isOwnMessage ? 'bg-[#2eb67d] text-white' : 'bg-[#222529] text-gray-300'}`}>
+                        <p className="text-[#3c4043] mt-1">
                           {message.content}
-                        </div>
+                        </p>
                       </div>
                     </div>
                   );
@@ -1095,7 +1476,7 @@ export default function ClassroomPage() {
             </div>
           ) : (
             // General Channel - Chat + Uploads
-            <div>
+            <div className="space-y-4">
               {/* Combined feed of messages and uploads */}
               {[...filteredMessages, ...uploads]
                 .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
@@ -1109,25 +1490,23 @@ export default function ClassroomPage() {
                     return (
                       <div
                         key={`msg-${message.id}-${index}`}
-                        className={`flex gap-3 mb-4 p-2 rounded ${isOwnMessage ? 'flex-row-reverse' : ''}`}
+                        className="flex gap-3 p-4 card"
                       >
-                        <div className={`w-9 h-9 rounded flex items-center justify-center flex-shrink-0 ${isOwnMessage ? 'bg-[#2eb67d]' : 'bg-[#4a154b]'}`}>
-                          <span className="text-white text-sm">
-                            {displayName[0]?.toUpperCase() || '?'}
-                          </span>
+                        <div className={`avatar flex-shrink-0 ${getAvatarColor(message.user_id)}`}>
+                          {displayName[0]?.toUpperCase() || '?'}
                         </div>
-                        <div className={`max-w-[70%] ${isOwnMessage ? 'text-right' : ''}`}>
-                          <div className={`flex items-baseline gap-2 ${isOwnMessage ? 'justify-end' : ''}`}>
-                            <span className="text-white font-semibold">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-[#202124] font-medium">
                               {isOwnMessage ? 'You' : displayName}
                             </span>
-                            <span className="text-gray-500 text-xs">
+                            <span className="text-[#5f6368] text-xs">
                               {formatTime(message.created_at)}
                             </span>
                           </div>
-                          <div className={`inline-block rounded-lg px-3 py-2 mt-1 ${isOwnMessage ? 'bg-[#2eb67d] text-white' : 'bg-[#222529] text-gray-300'}`}>
+                          <p className="text-[#3c4043] mt-1">
                             {message.content}
-                          </div>
+                          </p>
                         </div>
                       </div>
                     );
@@ -1143,32 +1522,40 @@ export default function ClassroomPage() {
                     return (
                       <div
                         key={`upload-${upload.id}-${index}`}
-                        className={`flex gap-3 mb-4 p-2 rounded ${isOwnUpload ? 'flex-row-reverse' : ''}`}
+                        className="card p-4"
                       >
-                        <div className="w-9 h-9 bg-[#e01e5a] rounded flex items-center justify-center flex-shrink-0">
-                          <span className="text-white text-sm">{isImage ? '📷' : '📄'}</span>
-                        </div>
-                        <div className={`max-w-[70%] ${isOwnUpload ? 'text-right' : ''}`}>
-                          <div className={`flex items-baseline gap-2 ${isOwnUpload ? 'justify-end' : ''}`}>
-                            <span className="text-white font-semibold">
-                              {isOwnUpload ? 'You' : displayName}
-                            </span>
-                            <span className="text-gray-500 text-xs">
-                              {formatTime(upload.created_at)}
-                            </span>
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 bg-[#fce8e6] rounded-lg flex items-center justify-center flex-shrink-0">
+                            {isImage ? (
+                              <svg className="w-5 h-5 text-[#d93025]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                            ) : (
+                              <svg className="w-5 h-5 text-[#d93025]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            )}
                           </div>
-                          <div className="bg-[#222529] border border-[#3f4147] rounded-lg p-3 mt-1 text-left">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-[#202124] font-medium">
+                                {isOwnUpload ? 'You' : displayName}
+                              </span>
+                              <span className="text-[#5f6368] text-xs">
+                                {formatTime(upload.created_at)}
+                              </span>
+                            </div>
                             {isImage ? (
                               // Image upload - show image preview
-                              <div className="space-y-2">
+                              <div className="mt-2">
                                 {upload.title && (
-                                  <div className="text-white font-medium">{upload.title}</div>
+                                  <div className="text-[#202124] font-medium mb-2">{upload.title}</div>
                                 )}
-                                <div className="flex justify-center">
+                                <div className="flex justify-start">
                                   <img 
                                     src={upload.content} 
                                     alt={upload.title || 'Uploaded image'}
-                                    className="max-w-full max-h-96 rounded border border-[#3f4147] object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                                    className="max-w-full max-h-96 rounded-lg border border-[#dadce0] object-contain cursor-pointer hover:shadow-lg transition-shadow"
                                     loading="lazy"
                                     onClick={(e) => {
                                       // Open image in new tab on click for full view
@@ -1179,13 +1566,10 @@ export default function ClassroomPage() {
                               </div>
                             ) : (
                               // Text/PDF upload - show content
-                              <>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-2xl">📝</span>
-                                  <span className="text-white font-medium">{upload.title}</span>
-                                </div>
-                                <p className="text-gray-400 text-sm line-clamp-3 whitespace-pre-wrap break-words">{upload.content}</p>
-                              </>
+                              <div className="mt-2">
+                                <div className="text-[#1a73e8] font-medium">{upload.title}</div>
+                                <p className="text-[#5f6368] text-sm line-clamp-3 whitespace-pre-wrap break-words mt-1">{upload.content}</p>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -1196,116 +1580,156 @@ export default function ClassroomPage() {
               <div ref={messagesEndRef} />
             </div>
           )}
-        </div>
-
-        {/* Message Input */}
-        {activeChannel !== 'insights' && (
-          <div className="p-4 border-t border-[#3f4147]">
-            <div className="bg-[#222529] rounded-lg border border-[#3f4147] flex">
-              <input
-                type="text"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                placeholder={`Message #${activeChannel}`}
-                className="flex-1 bg-transparent px-4 py-3 text-white focus:outline-none"
-              />
-              <button
-                onClick={sendMessage}
-                disabled={!newMessage.trim()}
-                className="px-4 text-[#4a154b] hover:text-[#611f69] disabled:text-gray-600"
-              >
-                Send
-              </button>
             </div>
           </div>
-        )}
+
+          {/* Message Input */}
+          {activeChannel !== 'insights' && activeChannel !== 'announcements' && (
+            <div className="p-4 border-t border-[#dadce0] bg-white">
+              <div className="max-w-4xl mx-auto">
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                    placeholder={`Share with class...`}
+                    className="input flex-1"
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={!newMessage.trim()}
+                    className="btn-primary px-6"
+                  >
+                    Post
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Members Panel */}
+      {showMembersPanel && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex justify-end">
+          <div className="bg-white w-full max-w-md h-full shadow-2xl border-l border-[#dadce0] flex flex-col">
+            <div className="p-4 border-b border-[#dadce0] flex items-center justify-between">
+              <div>
+                <div className="text-[#202124] font-medium">People</div>
+                <div className="text-[#5f6368] text-sm">Class members</div>
+              </div>
+              <button
+                onClick={() => setShowMembersPanel(false)}
+                className="text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4] p-2 rounded-full transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 space-y-2">
+              {Array.from(new Map(members.map(m => [m.id, m])).values())
+                .sort((a, b) => {
+                  if (a.role === 'teacher' && b.role !== 'teacher') return -1;
+                  if (a.role !== 'teacher' && b.role === 'teacher') return 1;
+                  return a.display_name.localeCompare(b.display_name);
+                })
+                .map((member) => (
+                  <div key={member.id} className="card p-3 flex items-center gap-3">
+                    <div className={`avatar ${member.role === 'teacher' ? 'avatar-blue' : 'avatar-green'}`}>
+                      {member.display_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[#202124] font-medium truncate">
+                        {member.display_name}{member.id === user?.id ? ' (you)' : ''}
+                      </div>
+                      <div className="text-[#5f6368] text-sm">
+                        {member.role === 'teacher' ? 'Teacher' : 'Student'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-hidden" onClick={() => {
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 overflow-hidden" onClick={() => {
           setShowUploadModal(false);
           stopCamera();
         }}>
-          <div className="bg-[#222529] rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto overflow-x-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-white text-xl font-bold">Upload Notes</h2>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto overflow-x-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-6 border-b border-[#dadce0]">
+              <h2 className="text-[#202124] text-xl font-medium">Upload Notes</h2>
               <button
                 onClick={() => {
                   setShowUploadModal(false);
                   stopCamera();
                 }}
-                className="text-gray-400 hover:text-white"
+                className="text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4] p-2 rounded-full transition-colors"
               >
-                ✕
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
             
-            {/* Mode Tabs */}
-            <div className="flex gap-2 mb-4 border-b border-[#3f4147]">
-              <button
-                onClick={() => {
-                  setUploadMode('text');
-                  stopCamera();
-                }}
-                className={`px-4 py-2 text-sm font-medium transition-colors ${
-                  uploadMode === 'text'
-                    ? 'text-white border-b-2 border-[#4a154b]'
-                    : 'text-gray-400 hover:text-gray-300'
-                }`}
-              >
-                📝 Text
-              </button>
-              <button
-                onClick={() => {
-                  setUploadMode('file');
-                  stopCamera();
-                }}
-                className={`px-4 py-2 text-sm font-medium transition-colors ${
-                  uploadMode === 'file'
-                    ? 'text-white border-b-2 border-[#4a154b]'
-                    : 'text-gray-400 hover:text-gray-300'
-                }`}
-              >
-                📁 File
-              </button>
-              <button
-                onClick={() => {
-                  setUploadMode('camera');
-                  startCamera();
-                }}
-                className={`px-4 py-2 text-sm font-medium transition-colors ${
-                  uploadMode === 'camera'
-                    ? 'text-white border-b-2 border-[#4a154b]'
-                    : 'text-gray-400 hover:text-gray-300'
-                }`}
-              >
-                📷 Camera
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* Title Input */}
-              <div>
-                <label className="block text-gray-300 text-sm mb-2">Title</label>
-                <input
-                  type="text"
-                  value={uploadTitle}
-                  onChange={(e) => setUploadTitle(e.target.value)}
-                  className="w-full bg-[#1a1d21] border border-[#3f4147] rounded px-4 py-2 text-white focus:outline-none focus:border-[#4a154b]"
-                  placeholder="e.g., Chapter 5 Notes - Cell Division"
-                />
+            <div className="p-6">
+              {/* Mode Tabs */}
+              <div className="flex gap-2 mb-6 border-b border-[#dadce0]">
+                <button
+                  onClick={() => {
+                    setUploadMode('text');
+                    stopCamera();
+                  }}
+                  className={`tab ${uploadMode === 'text' ? 'active' : ''}`}
+                >
+                  Text
+                </button>
+                <button
+                  onClick={() => {
+                    setUploadMode('file');
+                    stopCamera();
+                  }}
+                  className={`tab ${uploadMode === 'file' ? 'active' : ''}`}
+                >
+                  File
+                </button>
+                <button
+                  onClick={() => {
+                    setUploadMode('camera');
+                    startCamera();
+                  }}
+                  className={`tab ${uploadMode === 'camera' ? 'active' : ''}`}
+                >
+                  Camera
+                </button>
               </div>
+
+              <div className="space-y-4">
+                {/* Title Input */}
+                <div>
+                  <label className="block text-[#5f6368] text-sm font-medium mb-2">Title</label>
+                  <input
+                    type="text"
+                    value={uploadTitle}
+                    onChange={(e) => setUploadTitle(e.target.value)}
+                    className="input w-full"
+                    placeholder="e.g., Chapter 5 Notes - Cell Division"
+                  />
+                </div>
 
               {/* Text Mode */}
               {uploadMode === 'text' && (
                 <div>
-                  <label className="block text-gray-300 text-sm mb-2">Content</label>
+                  <label className="block text-[#5f6368] text-sm font-medium mb-2">Content</label>
                   <textarea
                     value={uploadContent}
                     onChange={(e) => setUploadContent(e.target.value)}
-                    className="w-full bg-[#1a1d21] border border-[#3f4147] rounded px-4 py-2 text-white focus:outline-none focus:border-[#4a154b] h-48 resize-none"
+                    className="input w-full h-48 resize-none"
                     placeholder="Paste your notes here..."
                   />
                 </div>
@@ -1314,8 +1738,8 @@ export default function ClassroomPage() {
               {/* File Mode */}
               {uploadMode === 'file' && (
                 <div>
-                  <label className="block text-gray-300 text-sm mb-2">Upload File</label>
-                  <div className="border-2 border-dashed border-[#3f4147] rounded-lg p-6 text-center">
+                  <label className="block text-[#5f6368] text-sm font-medium mb-2">Upload File</label>
+                  <div className="border-2 border-dashed border-[#dadce0] rounded-lg p-8 text-center hover:border-[#1a73e8] hover:bg-[#f8f9fa] transition-colors">
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -1330,32 +1754,41 @@ export default function ClassroomPage() {
                     />
                     {!selectedFile ? (
                       <div>
-                        <div className="text-4xl mb-2">📁</div>
-                        <p className="text-gray-400 text-sm mb-3">
-                          Click to select a file or drag and drop
+                        <div className="w-16 h-16 bg-[#e8f0fe] rounded-full flex items-center justify-center mx-auto mb-4">
+                          <svg className="w-8 h-8 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                        </div>
+                        <p className="text-[#5f6368] text-sm mb-3">
+                          Drag and drop a file here, or click to select
                         </p>
                         <button
                           onClick={() => fileInputRef.current?.click()}
-                          className="bg-[#4a154b] text-white px-4 py-2 rounded hover:bg-[#611f69] transition"
+                          className="btn-primary"
                         >
                           Choose File
                         </button>
-                        <p className="text-gray-500 text-xs mt-2">
+                        <p className="text-[#80868b] text-xs mt-3">
                           Supports: Images (JPG, PNG), PDFs, Text files
                         </p>
                       </div>
                     ) : (
                       <div>
-                        <div className="text-green-500 mb-2">✓ {selectedFile.name}</div>
+                        <div className="w-16 h-16 bg-[#e6f4ea] rounded-full flex items-center justify-center mx-auto mb-4">
+                          <svg className="w-8 h-8 text-[#1e8e3e]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <div className="text-[#1e8e3e] font-medium mb-2">{selectedFile.name}</div>
                         {isProcessingFile ? (
-                          <div className="text-gray-400 text-sm">Processing file...</div>
+                          <div className="text-[#5f6368] text-sm">Processing file...</div>
                         ) : (
                           <button
                             onClick={() => {
                               setSelectedFile(null);
                               setUploadContent('');
                             }}
-                            className="text-red-400 text-sm hover:text-red-300"
+                            className="text-[#d93025] text-sm hover:underline"
                           >
                             Remove file
                           </button>
@@ -1365,21 +1798,21 @@ export default function ClassroomPage() {
                   </div>
                   {uploadContent && uploadContent.startsWith('data:image/') ? (
                     <div className="mt-4">
-                      <label className="block text-gray-300 text-sm mb-2">Image Preview</label>
+                      <label className="block text-[#5f6368] text-sm font-medium mb-2">Image Preview</label>
                       <img 
                         src={uploadContent} 
                         alt="Upload preview" 
-                        className="max-w-full max-h-64 rounded border border-[#3f4147]"
+                        className="max-w-full max-h-64 rounded-lg border border-[#dadce0]"
                       />
-                      <p className="text-gray-400 text-xs mt-2">Image will be sent directly to the LLM for processing</p>
+                      <p className="text-[#80868b] text-xs mt-2">Image will be sent directly to the LLM for processing</p>
                     </div>
                   ) : uploadContent ? (
                     <div className="mt-4">
-                      <label className="block text-gray-300 text-sm mb-2">Content</label>
+                      <label className="block text-[#5f6368] text-sm font-medium mb-2">Content</label>
                       <textarea
                         value={uploadContent}
                         onChange={(e) => setUploadContent(e.target.value)}
-                        className="w-full bg-[#1a1d21] border border-[#3f4147] rounded px-4 py-2 text-white focus:outline-none focus:border-[#4a154b] h-48 resize-none"
+                        className="input w-full h-48 resize-none"
                         placeholder="Content will appear here after processing..."
                       />
                     </div>
@@ -1390,9 +1823,9 @@ export default function ClassroomPage() {
               {/* Camera Mode */}
               {uploadMode === 'camera' && (
                 <div>
-                  <label className="block text-gray-300 text-sm mb-2">Take Photo</label>
+                  <label className="block text-[#5f6368] text-sm font-medium mb-2">Take Photo</label>
                   {!capturedImage ? (
-                    <div className="border-2 border-[#3f4147] rounded-lg overflow-hidden">
+                    <div className="border-2 border-[#dadce0] rounded-lg overflow-hidden">
                       {cameraStream ? (
                         <div className="relative">
                           <video
@@ -1404,13 +1837,16 @@ export default function ClassroomPage() {
                           <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
                             <button
                               onClick={capturePhoto}
-                              className="bg-white rounded-full p-4 hover:bg-gray-200 transition"
+                              className="bg-white rounded-full p-4 shadow-lg hover:bg-gray-100 transition"
                             >
-                              <span className="text-2xl">📷</span>
+                              <svg className="w-8 h-8 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
                             </button>
                             <button
                               onClick={stopCamera}
-                              className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition"
+                              className="bg-white text-[#d93025] px-4 py-2 rounded-lg shadow-lg hover:bg-gray-100 transition font-medium"
                             >
                               Cancel
                             </button>
@@ -1418,13 +1854,18 @@ export default function ClassroomPage() {
                         </div>
                       ) : (
                         <div className="p-8 text-center">
-                          <div className="text-4xl mb-2">📷</div>
-                          <p className="text-gray-400 text-sm mb-3">
+                          <div className="w-16 h-16 bg-[#e8f0fe] rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </div>
+                          <p className="text-[#5f6368] text-sm mb-3">
                             Camera access needed to take photos
                           </p>
                           <button
                             onClick={startCamera}
-                            className="bg-[#4a154b] text-white px-4 py-2 rounded hover:bg-[#611f69] transition"
+                            className="btn-primary"
                           >
                             Start Camera
                           </button>
@@ -1436,10 +1877,10 @@ export default function ClassroomPage() {
                       <img
                         src={capturedImage}
                         alt="Captured"
-                        className="w-full max-h-96 object-contain rounded-lg mb-2"
+                        className="w-full max-h-96 object-contain rounded-lg mb-4 border border-[#dadce0]"
                       />
                       {isProcessingFile ? (
-                        <div className="text-gray-400 text-sm text-center">Processing image...</div>
+                        <div className="text-[#5f6368] text-sm text-center">Processing image...</div>
                       ) : (
                         <div className="flex gap-2">
                           <button
@@ -1448,7 +1889,7 @@ export default function ClassroomPage() {
                               setUploadContent('');
                               startCamera();
                             }}
-                            className="flex-1 border border-[#3f4147] text-gray-300 py-2 rounded hover:bg-[#2c2d30] transition"
+                            className="btn-secondary flex-1"
                           >
                             Retake
                           </button>
@@ -1456,13 +1897,13 @@ export default function ClassroomPage() {
                       )}
                       {uploadContent && uploadContent.startsWith('data:image/') && (
                         <div className="mt-4">
-                          <label className="block text-gray-300 text-sm mb-2">Image Preview</label>
+                          <label className="block text-[#5f6368] text-sm font-medium mb-2">Image Preview</label>
                           <img 
                             src={uploadContent} 
                             alt="Captured photo" 
-                            className="max-w-full max-h-64 rounded border border-[#3f4147]"
+                            className="max-w-full max-h-64 rounded-lg border border-[#dadce0]"
                           />
-                          <p className="text-gray-400 text-xs mt-2">Image will be sent directly to the LLM for processing</p>
+                          <p className="text-[#80868b] text-xs mt-2">Image will be sent directly to the LLM for processing</p>
                         </div>
                       )}
                     </div>
@@ -1470,23 +1911,69 @@ export default function ClassroomPage() {
                 </div>
               )}
 
-              <div className="flex gap-3 pt-4 border-t border-[#3f4147]">
-                <button
-                  onClick={() => {
-                    setShowUploadModal(false);
-                    stopCamera();
-                  }}
-                  className="flex-1 border border-[#3f4147] text-gray-300 py-2 rounded hover:bg-[#2c2d30] transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={submitUpload}
-                  disabled={!uploadTitle.trim() || !uploadContent.trim() || isProcessingFile}
-                  className="flex-1 bg-[#4a154b] text-white py-2 rounded hover:bg-[#611f69] transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isProcessingFile ? 'Processing...' : 'Upload'}
-                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-[#dadce0] bg-[#f8f9fa]">
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  stopCamera();
+                }}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitUpload}
+                disabled={!uploadTitle.trim() || !uploadContent.trim() || isProcessingFile}
+                className="btn-primary flex-1"
+              >
+                {isProcessingFile ? 'Processing...' : 'Upload'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Announcement Notification Toast (Students) */}
+      {announcementNotification && (
+        <div className="fixed bottom-4 right-4 z-50 animate-slide-in-right">
+          <div 
+            className="bg-white border-l-4 border-[#1a73e8] rounded-lg shadow-xl p-4 max-w-sm cursor-pointer hover:shadow-2xl transition-shadow"
+            onClick={() => {
+              setActiveChannel('announcements');
+              setAnnouncementNotification(null);
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-[#e8f0fe] rounded-full flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#1a73e8] font-medium text-sm">New Announcement</span>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAnnouncementNotification(null);
+                    }}
+                    className="text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4] p-1 rounded-full transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <h4 className="text-[#202124] font-medium mt-1 truncate">
+                  {announcementNotification.title}
+                </h4>
+                <p className="text-[#5f6368] text-sm mt-0.5 line-clamp-2">
+                  {announcementNotification.content}
+                </p>
+                <p className="text-[#1a73e8] text-xs mt-2 font-medium">Click to view</p>
               </div>
             </div>
           </div>

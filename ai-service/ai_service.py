@@ -500,10 +500,12 @@ def generate_study_guide_from_uploads(uploads: List[Dict]) -> str:
         return "No content found in uploads. Please add some notes first."
     
     prompt = f"""You are an expert academic tutor and study-guide designer.
-NOTES: {notes_text if notes_text.strip() else "No text notes provided."}
+
+NOTES:
+{notes_text if notes_text.strip() else "No text notes provided."}
 
 TASK:
-Given a student’s uploaded notes, create a comprehensive, high-quality study guide that is clearly separated by unit.
+Create a comprehensive, cohesive study guide from these notes. Write it as a flowing, well-organized document that a student would actually want to read and study from — not a rigid template.
 
 CRITICAL RULES:
 - Use ONLY the information in the provided notes.
@@ -516,44 +518,39 @@ OUTPUT FORMAT REQUIREMENTS:
   - Inline math: $...$
   - Displayed equations: $$...$$
 - Preserve special symbols (∫, ∑, →, ≤, ≥, etc.) correctly.
-- Use headings, subheadings, bullet points, tables, and spacing for readability.
+- Use headings, subheadings, bullet points, and spacing for readability.
 
-STRUCTURE THE STUDY GUIDE AS FOLLOWS:
+GUIDELINES FOR CREATING THE STUDY GUIDE:
 
-# 📘 Unit X: [Unit Title or Topic]
+1. **Organize by Topic/Unit**: If the notes cover multiple topics or units, organize the guide accordingly with clear headings.
 
-## 1. Core Concepts
-- Concise explanations of key ideas
-- Define important terms clearly
-- Explain *why* concepts matter or how they are used
+2. **Explain Concepts Naturally**: Write clear explanations that connect ideas together. Don't just list definitions — explain how concepts relate to each other and why they matter.
 
-## 2. Key Formulas & Rules
-- List all formulas exactly as presented in the notes
-- For each formula:
-  - State what each variable represents
-  - Briefly explain when/how to use it
-- Use proper math formatting
+3. **Include Formulas & Key Information**: Present important formulas, rules, and facts clearly. For each formula, explain what the variables mean and when to use it.
 
-## 3. Worked Examples (If Present in Notes)
-- Rewrite example problems step-by-step
-- Clearly show reasoning and intermediate steps
-- Highlight common patterns or strategies
+4. **Show Examples**: If the notes contain worked examples, include them with clear step-by-step explanations. Show the reasoning, not just the steps.
 
-## 4. Common Mistakes & Pitfalls
-- Based strictly on the notes
-- Emphasize misunderstandings students are likely to have
+5. **Highlight Common Pitfalls**: Based on the notes, mention common mistakes or tricky areas students should watch out for.
 
-## 5. Exam-Focused Takeaways
-- Short bullet points summarizing what students must remember
-- Prioritize high-yield ideas
+6. **Use Enriched Study Aids (where the notes support them)**:
+   - **Tables**: Summaries, comparisons, variable definitions, and units. Keep them compact and readable in Markdown.
+   - **Mnemonics / Memory Hooks**: Short, relevant, non-cheesy aids tied to the actual content.
+   - **Checklists**: For procedures or multi-step methods.
+   - **Worked Examples**: Stepwise, with brief reasoning per step.
+   - **Mini-diagrams-in-words**: If a visual is needed but no image is provided, describe the layout textually (no ASCII art).
+
+7. **End Each Major Section with Review Questions**: After covering a topic or unit, include 3-5 review questions that test understanding. These should be:
+   - A mix of conceptual questions ("Why does X happen?") and application questions ("Calculate Y given Z")
+   - Based directly on the material covered in the notes
+   - Varied in difficulty — some straightforward recall, some requiring deeper thinking
+   - Do NOT provide answers — let students test themselves
 
 STYLE GUIDELINES:
 - Write for a motivated high school or early college student.
-- Be precise, not verbose.
-- Use simple language without dumbing down the math.
-- Avoid filler phrases like “this is important” — show importance through explanation.
-
-If multiple units are present, repeat the above structure for each unit.
+- Be precise but conversational — like a knowledgeable tutor explaining things.
+- Use simple language without dumbing down technical content.
+- Create smooth transitions between sections.
+- Make it feel like a cohesive document, not a fill-in-the-blank template.
 """
 
     print(f"Calling LLM with prompt length: {len(prompt)} chars")

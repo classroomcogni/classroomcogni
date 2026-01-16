@@ -81,3 +81,14 @@ export interface AIInsight {
   metadata: Record<string, unknown>;
   created_at: string;
 }
+
+export interface Announcement {
+  id: string;
+  classroom_id: string;
+  user_id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  // Joined data
+  user?: User;
+}
