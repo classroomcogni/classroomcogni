@@ -47,6 +47,10 @@ export default function ClassroomPage() {
   const [newAnnouncementContent, setNewAnnouncementContent] = useState('');
   const [announcementNotification, setAnnouncementNotification] = useState<Announcement | null>(null);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
+  const [lastSeenAnnouncementsAt, setLastSeenAnnouncementsAt] = useState<string | null>(null);
+  const [highlightAnnouncementId, setHighlightAnnouncementId] = useState<string | null>(null);
+  const highlightAnnouncementTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const announcementsTopRef = useRef<HTMLDivElement>(null);
   const [isEditingGuide, setIsEditingGuide] = useState(false);
   const [editedGuideContent, setEditedGuideContent] = useState('');
   const [isSavingGuide, setIsSavingGuide] = useState(false);
@@ -56,6 +60,14 @@ export default function ClassroomPage() {
       router.push('/login');
     }
   }, [user, loading, router]);
+
+  // Persist last seen announcements per classroom/user for unread badge
+  useEffect(() => {
+    if (!user) return;
+    const key = `announcements_last_seen_${classroomId}_${user.id}`;
+    const stored = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
+    if (stored) setLastSeenAnnouncementsAt(stored);
+  }, [classroomId, user]);
 
   // Memoized fetch functions
   const fetchClassroom = useCallback(async () => {
@@ -115,7 +127,7 @@ export default function ClassroomPage() {
       .from('announcements')
       .select('*, user:users(*)')
       .eq('classroom_id', classroomId)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: false });
     setAnnouncements(data || []);
   }, [classroomId]);
 
@@ -670,8 +682,8 @@ export default function ClassroomPage() {
                 return prev;
               }
               
-              // Add new announcement from another user (at the end for chronological order)
-              return [...prev, data];
+              // Add new announcement and keep sorted (newest first)
+              return [...prev, data].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
             });
             
             // Show notification for students (not for the teacher who posted)
@@ -699,6 +711,31 @@ export default function ClassroomPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Mark announcements as read when viewing the tab
+  useEffect(() => {
+    if (!user) return;
+    if (activeChannel !== 'announcements') return;
+    if (announcements.length === 0) return;
+    const latestTs = announcements[0]?.created_at;
+    if (!latestTs) return;
+    const key = `announcements_last_seen_${classroomId}_${user.id}`;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(key, latestTs);
+    }
+    setLastSeenAnnouncementsAt(latestTs);
+    // Highlight newest and scroll to top
+    setHighlightAnnouncementId(announcements[0]?.id || null);
+    if (highlightAnnouncementTimeoutRef.current) {
+      clearTimeout(highlightAnnouncementTimeoutRef.current);
+    }
+    highlightAnnouncementTimeoutRef.current = setTimeout(() => {
+      setHighlightAnnouncementId(null);
+    }, 2000);
+    if (announcementsTopRef.current) {
+      announcementsTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [activeChannel, announcements, classroomId, user]);
 
   const sendMessage = async () => {
     if (!user || !newMessage.trim()) return;
@@ -762,7 +799,7 @@ export default function ClassroomPage() {
       created_at: new Date().toISOString(),
       user: user,
     };
-    setAnnouncements(prev => [...prev, optimisticAnnouncement]);
+    setAnnouncements(prev => [...prev, optimisticAnnouncement].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
 
     const { data, error } = await supabase
       .from('announcements')
@@ -782,7 +819,10 @@ export default function ClassroomPage() {
       alert('Failed to post announcement. Please try again.');
     } else if (data) {
       // Replace temp announcement with real one
-      setAnnouncements(prev => prev.map(a => a.id === tempId ? data : a));
+      setAnnouncements(prev => {
+        const updated = prev.map(a => a.id === tempId ? data : a);
+        return updated.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      });
     }
   };
 
@@ -980,6 +1020,10 @@ export default function ClassroomPage() {
     }
   }, [studyGuide, isEditingGuide]);
 
+  const unreadAnnouncementsCount = user?.role === 'student' && lastSeenAnnouncementsAt
+    ? announcements.filter((a) => new Date(a.created_at) > new Date(lastSeenAnnouncementsAt)).length
+    : (user?.role === 'student' ? announcements.length : 0);
+
   if (loading || !user || !classroom) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">
@@ -1026,7 +1070,14 @@ export default function ClassroomPage() {
             onClick={() => setActiveChannel('announcements')}
             className={`tab ${activeChannel === 'announcements' ? 'active' : ''}`}
           >
-            Announcements
+            <span className="flex items-center gap-2">
+              <span>Announcements</span>
+              {user.role === 'student' && unreadAnnouncementsCount > 0 && (
+                <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                  {unreadAnnouncementsCount}
+                </span>
+              )}
+            </span>
           </button>
           {user.role !== 'teacher' && (
             <>
@@ -1234,14 +1285,15 @@ export default function ClassroomPage() {
               )}
 
               {announcements.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-4" ref={announcementsTopRef}>
                   {announcements.map((announcement) => {
                     const isOwn = announcement.user_id === user?.id;
                     const authorName = announcement.user?.display_name || 'Teacher';
+                    const isHighlighted = highlightAnnouncementId === announcement.id;
                     return (
                       <div 
                         key={announcement.id} 
-                        className="card p-4 hover:shadow-md transition-shadow"
+                        className={`card p-4 hover:shadow-md transition-shadow ${isHighlighted ? 'ring-2 ring-[#1a73e8] ring-offset-1 ring-offset-white' : ''}`}
                       >
                         <div className="flex items-start gap-3">
                           <div className="avatar avatar-green flex-shrink-0">
