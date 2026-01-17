@@ -893,19 +893,19 @@ def main():
 ║  Individual student messages are never exposed.               ║
 ╚═══════════════════════════════════════════════════════════════╝
     """)
-    
-    if len(sys.argv) > 1:
-        if sys.argv[1] == '--server':
-            # Run as HTTP server
-            run_server()
-        else:
-            # Process specific classroom
-            classroom_id = sys.argv[1]
-            process_classroom(classroom_id)
-    else:
-        # Process all classrooms
-        print("No classroom ID provided. Processing all classrooms...")
-        process_all_classrooms()
+    run_server()
+    # if len(sys.argv) > 1:
+    #     if sys.argv[1] == '--server':
+    #         # Run as HTTP server
+    #         run_server()
+    #     else:
+    #         # Process specific classroom
+    #         classroom_id = sys.argv[1]
+    #         process_classroom(classroom_id)
+    # else:
+    #     # Process all classrooms
+    #     print("No classroom ID provided. Processing all classrooms...")
+    #     process_all_classrooms()
 
 
 if __name__ == '__main__':
