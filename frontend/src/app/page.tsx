@@ -31,8 +31,8 @@ export default function Home() {
       {/* Header */}
       <header className="p-6 flex justify-between items-center bg-white/80 backdrop-blur-sm border-b border-[#e2e0dc] sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-gradient-to-br from-[#6366f1] to-[#818cf8] rounded-2xl flex items-center justify-center shadow-md">
-            <span className="text-white font-bold text-xl">C</span>
+          <div className="w-11 h-11 rounded-2xl overflow-hidden flex items-center justify-center">
+            <img src="/logo.png" alt="Classly logo" className="w-full h-full object-contain" />
           </div>
           <span className="text-[#1e293b] text-xl font-semibold tracking-tight">Classly</span>
         </div>

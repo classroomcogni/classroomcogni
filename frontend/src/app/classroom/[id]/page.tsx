@@ -55,12 +55,25 @@ export default function ClassroomPage() {
   const [isEditingGuide, setIsEditingGuide] = useState(false);
   const [editedGuideContent, setEditedGuideContent] = useState('');
   const [isSavingGuide, setIsSavingGuide] = useState(false);
+  const [classroomColorIndex, setClassroomColorIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login');
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!classroomId) return;
+    const stored = localStorage.getItem(`classroom_color_index_${classroomId}`);
+    if (stored != null && stored !== '') {
+      const parsed = Number(stored);
+      if (!Number.isNaN(parsed)) {
+        setClassroomColorIndex(parsed);
+      }
+    }
+  }, [classroomId]);
 
   // Persist last seen announcements per classroom/user for unread badge
   useEffect(() => {
@@ -1021,6 +1034,26 @@ export default function ClassroomPage() {
     return colors[index];
   };
 
+  // Match dashboard classroom card gradient based on saved index (fallback to hash)
+  const getClassroomGradient = (seed: string, indexOverride?: number | null) => {
+    const colors = [
+      'from-[#22c55e] to-[#4ade80]', // Green
+      'from-[#f59e0b] to-[#fbbf24]', // Amber
+      'from-[#a855f7] to-[#c084fc]', // Purple
+      'from-[#ef4444] to-[#f87171]', // Red
+      'from-[#14b8a6] to-[#2dd4bf]', // Teal
+    ];
+    if (indexOverride != null) {
+      return colors[indexOverride % colors.length];
+    }
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+    }
+    const index = Math.abs(hash) % colors.length;
+    return colors[index];
+  };
+
   const filteredMessages = messages.filter(
     (m) => m.channel === (activeChannel === 'general' ? 'general' : 'study-guide')
   );
@@ -1064,7 +1097,7 @@ export default function ClassroomPage() {
           </svg>
         </button>
         <div className="flex items-center gap-3 flex-1">
-          <div className="w-11 h-11 bg-gradient-to-br from-[#6366f1] to-[#818cf8] rounded-2xl flex items-center justify-center shadow-md">
+          <div className={`w-11 h-11 bg-gradient-to-br ${getClassroomGradient(classroom.id, classroomColorIndex)} rounded-2xl flex items-center justify-center shadow-md`}>
             <span className="text-white font-bold text-lg">{classroom.name.charAt(0).toUpperCase()}</span>
           </div>
           <div>
