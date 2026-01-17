@@ -40,7 +40,7 @@ export default function SignupPage() {
             </svg>
           </div>
           <h1 className="text-[#202124] text-2xl font-medium">Create your account</h1>
-          <p className="text-[#5f6368] mt-2">Join ClassroomCogni today</p>
+          <p className="text-[#5f6368] mt-2">Join Classly today</p>
         </div>
 
         <form onSubmit={handleSubmit} className="card p-8 space-y-5">

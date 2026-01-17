@@ -31,7 +31,7 @@ export default function Home() {
           <div className="w-10 h-10 bg-[#1a73e8] rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-xl">C</span>
           </div>
-          <span className="text-[#202124] text-xl font-semibold">ClassroomCogni</span>
+          <span className="text-[#202124] text-xl font-semibold">Classly</span>
         </div>
         <div className="flex gap-4">
           <Link 

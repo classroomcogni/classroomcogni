@@ -1,4 +1,4 @@
--- ClassroomCogni Database Schema (Simple Version)
+-- Classly Database Schema (Simple Version)
 -- Use this if you have trouble enabling the pgvector extension
 -- This version stores embeddings as JSON arrays instead of VECTOR type
 -- 

@@ -1,7 +1,7 @@
 @echo off
-REM ClassroomCogni AI Service Startup Script
+REM Classly AI Service Startup Script
 echo ========================================
-echo Starting ClassroomCogni AI Service...
+echo Starting Classly AI Service...
 echo ========================================
 echo.
 

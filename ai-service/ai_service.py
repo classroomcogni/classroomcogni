@@ -1,6 +1,6 @@
 """
-ClassroomCogni AI Service
-=========================
+Classly AI Service
+==================
 
 This service can run as:
 1. CLI tool: python ai_service.py [classroom_id]
@@ -857,7 +857,7 @@ def run_server():
     provider_info = get_ai_provider_info()
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
-║           ClassroomCogni AI Service (HTTP Server)             ║
+║              Classly AI Service (HTTP Server)                 ║
 ║                                                               ║
 ║  AI Provider: {provider_info:<46} ║
 ║                                                               ║
@@ -882,7 +882,7 @@ def main():
     provider_info = get_ai_provider_info()
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
-║           ClassroomCogni AI Service                           ║
+║                    Classly AI Service                         ║
 ║                                                               ║
 ║  This service generates study guides and analyzes learning    ║
 ║  patterns while preserving student privacy.                   ║

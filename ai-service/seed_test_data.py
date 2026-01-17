@@ -1,5 +1,5 @@
 """
-Seed Test Data for ClassroomCogni
+Seed Test Data for Classly
 =================================
 
 This script creates sample data for testing and demo purposes.

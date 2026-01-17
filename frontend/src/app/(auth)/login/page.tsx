@@ -42,7 +42,7 @@ export default function LoginPage() {
             </svg>
           </div>
           <h1 className="text-[#202124] text-2xl font-medium">Sign in</h1>
-          <p className="text-[#5f6368] mt-2">to continue to ClassroomCogni</p>
+          <p className="text-[#5f6368] mt-2">to continue to Classly</p>
         </div>
 
         <form onSubmit={handleSubmit} className="card p-8 space-y-5">

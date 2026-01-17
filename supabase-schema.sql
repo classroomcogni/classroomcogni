@@ -1,4 +1,4 @@
--- ClassroomCogni Database Schema
+-- Classly Database Schema
 -- Run this in your Supabase SQL Editor to set up the database
 -- 
 -- IMPORTANT: Before running this script:

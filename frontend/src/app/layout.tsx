@@ -4,7 +4,7 @@ import "katex/dist/katex.min.css";
 import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "ClassroomCogni - Privacy-First Classroom Collaboration",
+  title: "Classly - Privacy-First Classroom Collaboration",
   description: "A collaborative classroom platform with AI-powered learning assistance",
 };
 
