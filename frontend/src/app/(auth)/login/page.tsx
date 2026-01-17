@@ -33,27 +33,34 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-[#1a73e8] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-            </svg>
-          </div>
-          <h1 className="text-[#202124] text-2xl font-medium">Sign in</h1>
-          <p className="text-[#5f6368] mt-2">to continue to Classly</p>
+    <div className="min-h-screen bg-gradient-to-br from-[#faf8f5] via-[#faf8f5] to-[#eff6ff] flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md animate-fade-in-up">
+        {/* Logo and Title */}
+        <div className="text-center mb-10">
+          <Link href="/" className="inline-block">
+            <div className="w-16 h-16 bg-gradient-to-br from-[#6366f1] to-[#818cf8] rounded-3xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-indigo-200 hover:shadow-xl hover:scale-105 transition-all">
+              <svg className="w-9 h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </div>
+          </Link>
+          <h1 className="text-[#1e293b] text-2xl font-semibold tracking-tight">Welcome back</h1>
+          <p className="text-[#64748b] mt-2">Sign in to continue to Classly</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="card p-8 space-y-5">
+        {/* Form Card */}
+        <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-8 shadow-xl shadow-slate-200/50 space-y-6">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            <div className="bg-[#fef2f2] border border-[#fecaca] text-[#dc2626] px-4 py-3 rounded-xl text-sm flex items-center gap-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
               {error}
             </div>
           )}
 
           <div>
-            <label className="block text-[#5f6368] text-sm font-medium mb-2">Email</label>
+            <label className="block text-[#1e293b] text-sm font-medium mb-2">Email</label>
             <input
               type="email"
               value={email}
@@ -65,7 +72,7 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-[#5f6368] text-sm font-medium mb-2">Password</label>
+            <label className="block text-[#1e293b] text-sm font-medium mb-2">Password</label>
             <input
               type="password"
               value={password}
@@ -79,7 +86,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary w-full py-3"
+            className="btn-primary w-full py-3.5 text-base rounded-xl"
           >
             {loading ? (
               <span className="flex items-center justify-center gap-2">
@@ -95,10 +102,10 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-[#5f6368] mt-6">
+        <p className="text-center text-[#64748b] mt-8">
           Don&apos;t have an account?{' '}
-          <Link href="/signup" className="text-[#1a73e8] hover:underline font-medium">
-            Sign up
+          <Link href="/signup" className="text-[#6366f1] hover:text-[#4f46e5] font-medium hover:underline">
+            Create one
           </Link>
         </p>
       </div>

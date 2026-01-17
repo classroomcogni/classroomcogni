@@ -31,7 +31,7 @@ function normalizeLatex(text: string): string {
 export default function StudyGuideContent({ content }: StudyGuideContentProps) {
   if (!content || content.trim() === '') {
     return (
-      <div className="text-[#5f6368] italic py-4">
+      <div className="text-[#64748b] italic py-4">
         No content available. Try regenerating the study guide.
       </div>
     );
@@ -42,46 +42,46 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
   const components: Components = {
     // Headings
     h1: ({ children }) => (
-      <h1 className="text-2xl font-bold text-[#202124] mt-6 mb-4 border-b border-[#dadce0] pb-2">
+      <h1 className="text-2xl font-bold text-[#1e293b] mt-6 mb-4 border-b border-[#e2e0dc] pb-2">
         {children}
       </h1>
     ),
     h2: ({ children }) => (
-      <h2 className="text-xl font-semibold text-[#202124] mt-5 mb-3">
+      <h2 className="text-xl font-semibold text-[#1e293b] mt-5 mb-3">
         {children}
       </h2>
     ),
     h3: ({ children }) => (
-      <h3 className="text-lg font-semibold text-[#1a73e8] mt-4 mb-2">
+      <h3 className="text-lg font-semibold text-[#6366f1] mt-4 mb-2">
         {children}
       </h3>
     ),
     h4: ({ children }) => (
-      <h4 className="text-base font-semibold text-[#3c4043] mt-3 mb-2">
+      <h4 className="text-base font-semibold text-[#475569] mt-3 mb-2">
         {children}
       </h4>
     ),
     
     // Paragraphs
     p: ({ children }) => (
-      <p className="text-[#3c4043] mb-3 leading-relaxed">
+      <p className="text-[#475569] mb-3 leading-relaxed">
         {children}
       </p>
     ),
     
     // Lists
     ul: ({ children }) => (
-      <ul className="list-disc text-[#3c4043] mb-3 space-y-1 ml-6 pl-1">
+      <ul className="list-disc text-[#475569] mb-3 space-y-1 ml-6 pl-1">
         {children}
       </ul>
     ),
     ol: ({ children }) => (
-      <ol className="list-decimal text-[#3c4043] mb-3 space-y-1 ml-6 pl-1">
+      <ol className="list-decimal text-[#475569] mb-3 space-y-1 ml-6 pl-1">
         {children}
       </ol>
     ),
     li: ({ children }) => (
-      <li className="text-[#3c4043] pl-1">
+      <li className="text-[#475569] pl-1">
         {children}
       </li>
     ),
@@ -91,26 +91,26 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
       const isInline = !className;
       if (isInline) {
         return (
-          <code className="bg-[#f1f3f4] text-[#d93025] px-1.5 py-0.5 rounded text-sm font-mono">
+          <code className="bg-[#faf8f5] text-[#f472b6] px-1.5 py-0.5 rounded-md text-sm font-mono">
             {children}
           </code>
         );
       }
       return (
-        <code className={`${className} block bg-[#f8f9fa] p-4 rounded-lg overflow-x-auto text-sm font-mono text-[#3c4043] border border-[#dadce0]`} {...props}>
+        <code className={`${className} block bg-[#faf8f5] p-4 rounded-xl overflow-x-auto text-sm font-mono text-[#475569] border border-[#e2e0dc]`} {...props}>
           {children}
         </code>
       );
     },
     pre: ({ children }) => (
-      <pre className="bg-[#f8f9fa] rounded-lg mb-3 overflow-x-auto border border-[#dadce0]">
+      <pre className="bg-[#faf8f5] rounded-xl mb-3 overflow-x-auto border border-[#e2e0dc]">
         {children}
       </pre>
     ),
     
     // Blockquotes
     blockquote: ({ children }) => (
-      <blockquote className="border-l-4 border-[#1a73e8] pl-4 my-3 text-[#5f6368] italic bg-[#f8f9fa] py-2 rounded-r">
+      <blockquote className="border-l-4 border-[#6366f1] pl-4 my-3 text-[#64748b] italic bg-[#faf8f5] py-2 rounded-r-xl">
         {children}
       </blockquote>
     ),
@@ -118,33 +118,33 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
     // Tables
     table: ({ children }) => (
       <div className="overflow-x-auto mb-4">
-        <table className="min-w-full border border-[#dadce0] rounded-lg overflow-hidden">
+        <table className="min-w-full border border-[#e2e0dc] rounded-xl overflow-hidden">
           {children}
         </table>
       </div>
     ),
     thead: ({ children }) => (
-      <thead className="bg-[#f1f3f4]">
+      <thead className="bg-[#faf8f5]">
         {children}
       </thead>
     ),
     tbody: ({ children }) => (
-      <tbody className="divide-y divide-[#dadce0] bg-white">
+      <tbody className="divide-y divide-[#e2e0dc] bg-white">
         {children}
       </tbody>
     ),
     tr: ({ children }) => (
-      <tr className="hover:bg-[#f8f9fa]">
+      <tr className="hover:bg-[#faf8f5] transition-colors">
         {children}
       </tr>
     ),
     th: ({ children }) => (
-      <th className="px-4 py-2 text-left text-[#202124] font-semibold border-b border-[#dadce0]">
+      <th className="px-4 py-3 text-left text-[#1e293b] font-semibold border-b border-[#e2e0dc]">
         {children}
       </th>
     ),
     td: ({ children }) => (
-      <td className="px-4 py-2 text-[#3c4043]">
+      <td className="px-4 py-3 text-[#475569]">
         {children}
       </td>
     ),
@@ -155,7 +155,7 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
         href={href} 
         target="_blank" 
         rel="noopener noreferrer"
-        className="text-[#1a73e8] hover:underline"
+        className="text-[#6366f1] hover:text-[#4f46e5] hover:underline transition-colors"
       >
         {children}
       </a>
@@ -163,17 +163,17 @@ export default function StudyGuideContent({ content }: StudyGuideContentProps) {
     
     // Horizontal rule
     hr: () => (
-      <hr className="border-[#dadce0] my-4" />
+      <hr className="border-[#e2e0dc] my-4" />
     ),
     
     // Strong and emphasis
     strong: ({ children }) => (
-      <strong className="font-bold text-[#202124]">
+      <strong className="font-bold text-[#1e293b]">
         {children}
       </strong>
     ),
     em: ({ children }) => (
-      <em className="italic text-[#3c4043]">
+      <em className="italic text-[#475569]">
         {children}
       </em>
     ),

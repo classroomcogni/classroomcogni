@@ -165,55 +165,55 @@ export default function DashboardPage() {
     }
   };
 
-  // Generate a color for classroom cards based on index
+  // Generate a color for classroom cards based on index - warm, cozy palette
   const getCardColor = (index: number) => {
     const colors = [
-      'bg-[#1a73e8]', // Blue
-      'bg-[#1e8e3e]', // Green
-      'bg-[#e37400]', // Orange
-      'bg-[#a142f4]', // Purple
-      'bg-[#d93025]', // Red
-      'bg-[#129eaf]', // Teal
+      'from-[#6366f1] to-[#818cf8]', // Indigo
+      'from-[#22c55e] to-[#4ade80]', // Green
+      'from-[#f59e0b] to-[#fbbf24]', // Amber
+      'from-[#a855f7] to-[#c084fc]', // Purple
+      'from-[#ef4444] to-[#f87171]', // Red
+      'from-[#14b8a6] to-[#2dd4bf]', // Teal
     ];
     return colors[index % colors.length];
   };
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">
+      <div className="min-h-screen flex items-center justify-center bg-[#faf8f5]">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-[#1a73e8] border-t-transparent rounded-full animate-spin"></div>
-          <div className="text-[#5f6368] text-lg font-medium">Loading...</div>
+          <div className="w-12 h-12 border-3 border-[#6366f1] border-t-transparent rounded-full animate-spin"></div>
+          <div className="text-[#64748b] text-lg font-medium">Loading...</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa]">
+    <div className="min-h-screen bg-[#faf8f5]">
       {/* Header */}
-      <header className="bg-white border-b border-[#dadce0] px-6 py-3 flex justify-between items-center shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#1a73e8] rounded-lg flex items-center justify-center">
+      <header className="bg-white/80 backdrop-blur-sm border-b border-[#e2e0dc] px-6 py-4 flex justify-between items-center sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <div className="w-11 h-11 bg-gradient-to-br from-[#6366f1] to-[#818cf8] rounded-2xl flex items-center justify-center shadow-md">
             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
           </div>
-          <span className="text-[#202124] font-medium text-xl">Classly</span>
+          <span className="text-[#1e293b] font-semibold text-xl tracking-tight">Classly</span>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#1a73e8] rounded-full flex items-center justify-center">
-              <span className="text-white font-medium text-sm">{user.display_name.charAt(0).toUpperCase()}</span>
+          <div className="flex items-center gap-3 bg-[#f5f3f0] rounded-2xl px-4 py-2">
+            <div className="w-9 h-9 bg-gradient-to-br from-[#6366f1] to-[#818cf8] rounded-xl flex items-center justify-center shadow-sm">
+              <span className="text-white font-semibold text-sm">{user.display_name.charAt(0).toUpperCase()}</span>
             </div>
-            <div className="text-right">
-              <div className="text-[#202124] text-sm font-medium">{user.display_name}</div>
-              <div className="text-[#5f6368] text-xs capitalize">{user.role}</div>
+            <div className="text-left">
+              <div className="text-[#1e293b] text-sm font-medium">{user.display_name}</div>
+              <div className="text-[#64748b] text-xs capitalize">{user.role}</div>
             </div>
           </div>
           <button
             onClick={signOut}
-            className="text-[#5f6368] hover:text-[#202124] text-sm font-medium hover:bg-[#f1f3f4] px-3 py-2 rounded-lg transition-colors"
+            className="text-[#64748b] hover:text-[#1e293b] text-sm font-medium hover:bg-[#f0eeea] px-4 py-2.5 rounded-xl transition-all"
           >
             Sign Out
           </button>
@@ -221,13 +221,18 @@ export default function DashboardPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto py-8 px-6">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-[#202124] text-2xl font-medium">Your Classes</h1>
+      <main className="max-w-6xl mx-auto py-10 px-6">
+        <div className="flex justify-between items-center mb-10">
+          <div>
+            <h1 className="text-[#1e293b] text-3xl font-semibold tracking-tight">Your Classes</h1>
+            <p className="text-[#64748b] mt-1">
+              {user.role === 'teacher' ? 'Manage and create your classrooms' : 'Your enrolled classrooms'}
+            </p>
+          </div>
           {user.role === 'teacher' ? (
             <button
               onClick={() => setShowCreateModal(true)}
-              className="btn-primary flex items-center gap-2"
+              className="btn-primary flex items-center gap-2 rounded-xl"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -237,7 +242,7 @@ export default function DashboardPage() {
           ) : (
             <button
               onClick={() => setShowJoinModal(true)}
-              className="btn-primary flex items-center gap-2"
+              className="btn-primary flex items-center gap-2 rounded-xl"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
@@ -248,25 +253,25 @@ export default function DashboardPage() {
         </div>
 
         {classrooms.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="w-24 h-24 bg-[#e8f0fe] rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-12 h-12 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="text-center py-20 animate-fade-in-up">
+            <div className="w-24 h-24 bg-gradient-to-br from-[#eff6ff] to-[#dbeafe] rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-lg">
+              <svg className="w-12 h-12 text-[#6366f1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
               </svg>
             </div>
-            <h2 className="text-[#202124] text-xl font-medium mb-2">
+            <h2 className="text-[#1e293b] text-2xl font-semibold mb-3">
               {user.role === 'teacher'
                 ? "You haven't created any classes yet"
                 : "You haven't joined any classes yet"}
             </h2>
-            <p className="text-[#5f6368] mb-6">
+            <p className="text-[#64748b] mb-8 max-w-md mx-auto">
               {user.role === 'teacher'
-                ? 'Create your first class to get started!'
+                ? 'Create your first class to start building your learning community.'
                 : 'Ask your teacher for a class code to get started!'}
             </p>
             <button
               onClick={() => user.role === 'teacher' ? setShowCreateModal(true) : setShowJoinModal(true)}
-              className="btn-primary"
+              className="btn-primary rounded-xl px-8 py-3"
             >
               {user.role === 'teacher' ? 'Create your first class' : 'Join a class'}
             </button>
@@ -277,27 +282,33 @@ export default function DashboardPage() {
               <div
                 key={classroom.id}
                 onClick={() => router.push(`/classroom/${classroom.id}`)}
-                className="card cursor-pointer hover:shadow-lg transition-shadow overflow-hidden"
+                className="bg-white rounded-3xl cursor-pointer hover:shadow-xl transition-all hover:-translate-y-1 overflow-hidden group"
               >
-                {/* Colored header */}
-                <div className={`${getCardColor(index)} h-24 p-4 flex items-end`}>
-                  <h3 className="text-white font-medium text-lg line-clamp-2">
+                {/* Colored header with gradient */}
+                <div className={`bg-gradient-to-br ${getCardColor(index)} h-28 p-5 flex items-end`}>
+                  <h3 className="text-white font-semibold text-lg line-clamp-2 drop-shadow-sm">
                     {classroom.name}
                   </h3>
                 </div>
                 {/* Content */}
-                <div className="p-4">
+                <div className="p-5">
                   {classroom.description && (
-                    <p className="text-[#5f6368] text-sm mb-4 line-clamp-2">{classroom.description}</p>
+                    <p className="text-[#64748b] text-sm mb-4 line-clamp-2 leading-relaxed">{classroom.description}</p>
                   )}
                   {user.role === 'teacher' && (
                     <div className="flex items-center gap-2 text-sm">
-                      <span className="text-[#5f6368]">Class code:</span>
-                      <code className="bg-[#f1f3f4] px-2 py-1 rounded text-[#1a73e8] font-medium">
+                      <span className="text-[#64748b]">Class code:</span>
+                      <code className="bg-[#f5f3f0] px-3 py-1.5 rounded-lg text-[#6366f1] font-semibold tracking-wider">
                         {classroom.join_code}
                       </code>
                     </div>
                   )}
+                  <div className="flex items-center gap-2 mt-4 text-[#64748b] text-sm">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                    <span className="group-hover:text-[#6366f1] transition-colors">Enter classroom</span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -307,20 +318,24 @@ export default function DashboardPage() {
 
       {/* Create Classroom Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 overflow-hidden">
-            <div className="p-6 border-b border-[#dadce0]">
-              <h2 className="text-[#202124] text-xl font-medium">Create class</h2>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-fade-in-up">
+            <div className="p-6 border-b border-[#e2e0dc]">
+              <h2 className="text-[#1e293b] text-xl font-semibold">Create a new class</h2>
+              <p className="text-[#64748b] text-sm mt-1">Set up your classroom space</p>
             </div>
             <div className="p-6">
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+                <div className="bg-[#fef2f2] border border-[#fecaca] text-[#dc2626] px-4 py-3 rounded-xl mb-5 text-sm flex items-center gap-2">
+                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                   {error}
                 </div>
               )}
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
-                  <label className="block text-[#5f6368] text-sm font-medium mb-2">Class name (required)</label>
+                  <label className="block text-[#1e293b] text-sm font-medium mb-2">Class name</label>
                   <input
                     type="text"
                     value={newClassName}
@@ -330,30 +345,30 @@ export default function DashboardPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[#5f6368] text-sm font-medium mb-2">Description (optional)</label>
+                  <label className="block text-[#1e293b] text-sm font-medium mb-2">Description <span className="text-[#94a3b8] font-normal">(optional)</span></label>
                   <textarea
                     value={newClassDesc}
                     onChange={(e) => setNewClassDesc(e.target.value)}
-                    className="input w-full h-24 resize-none"
+                    className="input w-full h-28 resize-none"
                     placeholder="What's this class about?"
                   />
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 bg-[#f8f9fa] border-t border-[#dadce0]">
+            <div className="flex gap-3 p-6 bg-[#faf8f5] border-t border-[#e2e0dc]">
               <button
                 onClick={() => {
                   setShowCreateModal(false);
                   setError('');
                 }}
-                className="btn-secondary"
+                className="btn-secondary flex-1 rounded-xl"
               >
                 Cancel
               </button>
               <button
                 onClick={createClassroom}
                 disabled={!newClassName.trim()}
-                className="btn-primary"
+                className="btn-primary flex-1 rounded-xl"
               >
                 Create
               </button>
@@ -364,46 +379,50 @@ export default function DashboardPage() {
 
       {/* Join Classroom Modal */}
       {showJoinModal && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 overflow-hidden">
-            <div className="p-6 border-b border-[#dadce0]">
-              <h2 className="text-[#202124] text-xl font-medium">Join class</h2>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-fade-in-up">
+            <div className="p-6 border-b border-[#e2e0dc]">
+              <h2 className="text-[#1e293b] text-xl font-semibold">Join a class</h2>
+              <p className="text-[#64748b] text-sm mt-1">Enter the code from your teacher</p>
             </div>
             <div className="p-6">
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+                <div className="bg-[#fef2f2] border border-[#fecaca] text-[#dc2626] px-4 py-3 rounded-xl mb-5 text-sm flex items-center gap-2">
+                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                   {error}
                 </div>
               )}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[#5f6368] text-sm font-medium mb-2">Class code</label>
-                  <p className="text-[#5f6368] text-sm mb-3">Ask your teacher for the class code, then enter it here.</p>
+                  <label className="block text-[#1e293b] text-sm font-medium mb-2">Class code</label>
+                  <p className="text-[#64748b] text-sm mb-4">Ask your teacher for the 6-character class code.</p>
                   <input
                     type="text"
                     value={joinCode}
                     onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                    className="input w-full text-center text-2xl tracking-widest font-mono"
+                    className="input w-full text-center text-2xl tracking-[0.3em] font-mono py-4"
                     placeholder="ABC123"
                     maxLength={6}
                   />
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 bg-[#f8f9fa] border-t border-[#dadce0]">
+            <div className="flex gap-3 p-6 bg-[#faf8f5] border-t border-[#e2e0dc]">
               <button
                 onClick={() => {
                   setShowJoinModal(false);
                   setError('');
                 }}
-                className="btn-secondary"
+                className="btn-secondary flex-1 rounded-xl"
               >
                 Cancel
               </button>
               <button
                 onClick={joinClassroom}
                 disabled={!joinCode.trim()}
-                className="btn-primary"
+                className="btn-primary flex-1 rounded-xl"
               >
                 Join
               </button>

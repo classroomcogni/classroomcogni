@@ -51,6 +51,7 @@ export default function ClassroomPage() {
   const [highlightAnnouncementId, setHighlightAnnouncementId] = useState<string | null>(null);
   const highlightAnnouncementTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const announcementsTopRef = useRef<HTMLDivElement>(null);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
   const [isEditingGuide, setIsEditingGuide] = useState(false);
   const [editedGuideContent, setEditedGuideContent] = useState('');
   const [isSavingGuide, setIsSavingGuide] = useState(false);
@@ -712,6 +713,20 @@ export default function ClassroomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Scroll to appropriate position when switching tabs (instant, no animation)
+  useEffect(() => {
+    // Use requestAnimationFrame to ensure DOM has updated before scrolling
+    requestAnimationFrame(() => {
+      if (activeChannel === 'general') {
+        // Discussion tab - scroll to bottom instantly
+        messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
+      } else {
+        // Announcements, Study Guide, Insights - scroll to top instantly
+        contentScrollRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+      }
+    });
+  }, [activeChannel]);
+
   // Mark announcements as read when viewing the tab
   useEffect(() => {
     if (!user) return;
@@ -1026,37 +1041,37 @@ export default function ClassroomPage() {
 
   if (loading || !user || !classroom) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">
+      <div className="min-h-screen flex items-center justify-center bg-[#faf8f5]">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-[#1a73e8] border-t-transparent rounded-full animate-spin"></div>
-          <div className="text-[#5f6368] text-lg font-medium">Loading classroom...</div>
+          <div className="w-12 h-12 border-3 border-[#6366f1] border-t-transparent rounded-full animate-spin"></div>
+          <div className="text-[#64748b] text-lg font-medium">Loading classroom...</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[#f8f9fa] overflow-hidden">
+    <div className="h-screen flex flex-col bg-[#faf8f5] overflow-hidden">
       {/* Top Header Bar */}
-      <header className="h-16 bg-white border-b border-[#dadce0] flex items-center px-6 flex-shrink-0 shadow-sm">
+      <header className="h-16 bg-white/90 backdrop-blur-sm border-b border-[#e2e0dc] flex items-center px-6 flex-shrink-0">
         <button
           onClick={() => router.push('/dashboard')}
-          className="text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4] p-2 rounded-full transition-colors mr-4"
+          className="text-[#64748b] hover:text-[#1e293b] hover:bg-[#f5f3f0] p-2.5 rounded-xl transition-all mr-4"
           title="Back to Dashboard"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
         </button>
         <div className="flex items-center gap-3 flex-1">
-          <div className="w-10 h-10 bg-[#1a73e8] rounded-lg flex items-center justify-center">
+          <div className="w-11 h-11 bg-gradient-to-br from-[#6366f1] to-[#818cf8] rounded-2xl flex items-center justify-center shadow-md">
             <span className="text-white font-bold text-lg">{classroom.name.charAt(0).toUpperCase()}</span>
           </div>
           <div>
-            <h1 className="text-[#202124] font-medium text-lg leading-tight">{classroom.name}</h1>
+            <h1 className="text-[#1e293b] font-semibold text-lg leading-tight">{classroom.name}</h1>
             {user.role === 'teacher' && (
-              <div className="text-[#5f6368] text-sm">
-                Class code: <span className="font-medium text-[#1a73e8]">{classroom.join_code}</span>
+              <div className="text-[#64748b] text-sm">
+                Class code: <span className="font-semibold text-[#6366f1]">{classroom.join_code}</span>
               </div>
             )}
           </div>
@@ -1064,7 +1079,7 @@ export default function ClassroomPage() {
       </header>
 
       {/* Tab Navigation */}
-      <nav className="bg-white border-b border-[#dadce0] px-6 flex-shrink-0">
+      <nav className="bg-white border-b border-[#e2e0dc] px-6 flex-shrink-0">
         <div className="flex">
           <button
             onClick={() => setActiveChannel('announcements')}
@@ -1073,7 +1088,7 @@ export default function ClassroomPage() {
             <span className="flex items-center gap-2">
               <span>Announcements</span>
               {user.role === 'student' && unreadAnnouncementsCount > 0 && (
-                <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                <span className="bg-gradient-to-r from-[#ef4444] to-[#f87171] text-white text-xs px-2 py-0.5 rounded-full font-medium">
                   {unreadAnnouncementsCount}
                 </span>
               )}
@@ -1129,8 +1144,8 @@ export default function ClassroomPage() {
         {/* Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Action Bar */}
-          <div className="px-6 py-3 flex items-center justify-between flex-shrink-0 bg-[#f8f9fa]">
-            <div className="text-[#5f6368] text-sm font-medium">
+          <div className="px-6 py-4 flex items-center justify-between flex-shrink-0 bg-[#faf8f5]">
+            <div className="text-[#64748b] text-sm font-medium">
               {activeChannel === 'insights' && '📊 Class Insights'}
               {activeChannel === 'announcements' && '📢 Announcements & Updates'}
               {activeChannel === 'general' && '💬 Class Discussion'}
@@ -1141,7 +1156,7 @@ export default function ClassroomPage() {
                 <button
                   onClick={() => generateInsights()}
                   disabled={isGeneratingInsights}
-                  className={`btn-primary flex items-center gap-2 ${isGeneratingInsights ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`btn-primary flex items-center gap-2 rounded-xl ${isGeneratingInsights ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   {isGeneratingInsights ? (
                     <>
@@ -1164,7 +1179,7 @@ export default function ClassroomPage() {
               {activeChannel !== 'insights' && activeChannel !== 'announcements' && user.role !== 'teacher' && (
                 <button
                   onClick={() => setShowUploadModal(true)}
-                  className="btn-primary flex items-center gap-2"
+                  className="btn-primary flex items-center gap-2 rounded-xl"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1176,7 +1191,7 @@ export default function ClassroomPage() {
           </div>
 
           {/* Messages / Content Area */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div ref={contentScrollRef} className="flex-1 overflow-y-auto p-6">
             <div className="max-w-4xl mx-auto">
           {activeChannel === 'insights' ? (
             // Teacher Insights View
@@ -1184,16 +1199,16 @@ export default function ClassroomPage() {
             // Teachers NEVER see individual student messages here
             <div className="space-y-6">
               {/* Privacy Notice */}
-              <div className="card p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 bg-[#e8f0fe] rounded-full flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="bg-white rounded-2xl p-5 shadow-md">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-[#eff6ff] to-[#dbeafe] rounded-2xl flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-[#6366f1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-[#202124] font-medium mb-1">Privacy Notice</h3>
-                    <p className="text-[#5f6368] text-sm">
+                    <h3 className="text-[#1e293b] font-semibold mb-1">Privacy Notice</h3>
+                    <p className="text-[#64748b] text-sm leading-relaxed">
                       This dashboard shows <strong>aggregated insights only</strong>. 
                       Individual student messages and identities are never displayed. 
                       AI analyzes patterns to help you understand class-wide learning needs.
@@ -1201,10 +1216,10 @@ export default function ClassroomPage() {
                   </div>
                 </div>
                 {insightsError && (
-                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  <div className="mt-4 p-4 bg-[#fef2f2] border border-[#fecaca] rounded-xl text-[#dc2626] text-sm">
                     <strong>Error:</strong> {insightsError}
-                    <p className="text-xs mt-1 text-red-600">
-                      Make sure the AI service is running. In the <code className="bg-red-100 px-1 rounded">ai-service</code> directory, run: <code className="bg-red-100 px-1 rounded">start-server.bat</code> (Windows) or <code className="bg-red-100 px-1 rounded">python ai_service.py --server</code>
+                    <p className="text-xs mt-1 text-[#ef4444]">
+                      Make sure the AI service is running. In the <code className="bg-[#fee2e2] px-1.5 rounded">ai-service</code> directory, run: <code className="bg-[#fee2e2] px-1.5 rounded">start-server.bat</code> (Windows) or <code className="bg-[#fee2e2] px-1.5 rounded">python ai_service.py --server</code>
                     </p>
                   </div>
                 )}
@@ -1219,26 +1234,26 @@ export default function ClassroomPage() {
               />
 
               {/* Confusion Topics - Show only the latest */}
-              <div className="card p-5">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-[#fef7e0] rounded-lg flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-[#f9ab00]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="bg-white rounded-2xl p-6 shadow-md">
+                <div className="flex items-center gap-4 mb-5">
+                  <div className="w-12 h-12 bg-gradient-to-br from-[#fef3c7] to-[#fde68a] rounded-2xl flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-[#f59e0b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-[#202124] font-medium">Common Confusion Topics</h3>
+                    <h3 className="text-[#1e293b] font-semibold">Common Confusion Topics</h3>
                     {confusionSummaries.length > 0 && (
-                      <span className="text-[#5f6368] text-xs">Last updated: {formatDate(confusionSummaries[0].created_at)}</span>
+                      <span className="text-[#64748b] text-xs">Last updated: {formatDate(confusionSummaries[0].created_at)}</span>
                     )}
                   </div>
                 </div>
                 {confusionSummaries.length > 0 ? (
-                  <div className="border-t border-[#dadce0] pt-4">
+                  <div className="border-t border-[#e2e0dc] pt-5">
                     <StudyGuideContent content={confusionSummaries[0].content || ''} />
                   </div>
                 ) : (
-                  <p className="text-[#5f6368] text-sm">
+                  <p className="text-[#64748b] text-sm">
                     No confusion analysis yet. Click &quot;Refresh Insights&quot; to analyze student discussions.
                   </p>
                 )}
@@ -1247,11 +1262,11 @@ export default function ClassroomPage() {
             </div>
           ) : activeChannel === 'announcements' ? (
             // Announcements Channel - Teacher posts, students read
-            <div className="space-y-4">
+            <div className="space-y-5">
               {/* Teacher post input card */}
               {user.role === 'teacher' && (
-                <div className="card p-4">
-                  <div className="flex items-start gap-3">
+                <div className="bg-white rounded-2xl p-5 shadow-md">
+                  <div className="flex items-start gap-4">
                     <div className={`avatar ${getAvatarColor(user.id)}`}>
                       {user.display_name.charAt(0).toUpperCase()}
                     </div>
@@ -1261,7 +1276,7 @@ export default function ClassroomPage() {
                         placeholder="Announcement title"
                         value={newAnnouncementTitle}
                         onChange={(e) => setNewAnnouncementTitle(e.target.value)}
-                        className="input w-full mb-2"
+                        className="input w-full mb-3"
                       />
                       <textarea
                         placeholder="Share something with your class..."
@@ -1270,11 +1285,11 @@ export default function ClassroomPage() {
                         rows={3}
                         className="input w-full resize-none"
                       />
-                      <div className="flex justify-end mt-3">
+                      <div className="flex justify-end mt-4">
                         <button
                           onClick={postAnnouncement}
                           disabled={!newAnnouncementTitle.trim() || !newAnnouncementContent.trim()}
-                          className="btn-primary"
+                          className="btn-primary rounded-xl"
                         >
                           Post
                         </button>
@@ -1293,18 +1308,18 @@ export default function ClassroomPage() {
                     return (
                       <div 
                         key={announcement.id} 
-                        className={`card p-4 hover:shadow-md transition-shadow ${isHighlighted ? 'ring-2 ring-[#1a73e8] ring-offset-1 ring-offset-white' : ''}`}
+                        className={`bg-white rounded-2xl p-5 shadow-md hover:shadow-lg transition-all ${isHighlighted ? 'ring-2 ring-[#6366f1] ring-offset-2' : ''}`}
                       >
-                        <div className="flex items-start gap-3">
+                        <div className="flex items-start gap-4">
                           <div className="avatar avatar-green flex-shrink-0">
                             {authorName[0]?.toUpperCase() || '?'}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-baseline gap-2 flex-wrap">
-                              <span className="text-[#202124] font-medium">
+                              <span className="text-[#1e293b] font-semibold">
                                 {isOwn ? 'You' : authorName}
                               </span>
-                              <span className="text-[#5f6368] text-sm">
+                              <span className="text-[#94a3b8] text-sm">
                                 {new Date(announcement.created_at).toLocaleDateString('en-US', {
                                   month: 'short',
                                   day: 'numeric',
@@ -1313,10 +1328,10 @@ export default function ClassroomPage() {
                                 })}
                               </span>
                             </div>
-                            <h4 className="text-[#1a73e8] font-medium text-lg mt-1">
+                            <h4 className="text-[#6366f1] font-semibold text-lg mt-2">
                               {announcement.title}
                             </h4>
-                            <p className="text-[#3c4043] mt-2 whitespace-pre-wrap">{announcement.content}</p>
+                            <p className="text-[#475569] mt-2 whitespace-pre-wrap leading-relaxed">{announcement.content}</p>
                           </div>
                         </div>
                       </div>
@@ -1324,14 +1339,14 @@ export default function ClassroomPage() {
                   })}
                 </div>
               ) : (
-                <div className="card p-12 text-center">
-                  <div className="w-16 h-16 bg-[#e8f0fe] rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-white rounded-2xl p-12 text-center shadow-md">
+                  <div className="w-16 h-16 bg-gradient-to-br from-[#eff6ff] to-[#dbeafe] rounded-2xl flex items-center justify-center mx-auto mb-5">
+                    <svg className="w-8 h-8 text-[#6366f1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
                     </svg>
                   </div>
-                  <h3 className="text-[#202124] font-medium text-lg mb-2">No announcements yet</h3>
-                  <p className="text-[#5f6368]">
+                  <h3 className="text-[#1e293b] font-semibold text-lg mb-2">No announcements yet</h3>
+                  <p className="text-[#64748b]">
                     {user.role === 'teacher' 
                       ? 'Share important updates with your class using the form above.'
                       : 'Your teacher will post announcements here.'}
@@ -1341,19 +1356,19 @@ export default function ClassroomPage() {
             </div>
           ) : activeChannel === 'study-guide' ? (
             // Study Guide Channel - Shows AI-generated guides
-            <div className="space-y-4">
-              <div className="card p-5">
+            <div className="space-y-5">
+              <div className="bg-white rounded-2xl p-6 shadow-md">
                 <div className="flex justify-between items-start">
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-[#fce8e6] rounded-lg flex items-center justify-center flex-shrink-0">
-                      <svg className="w-6 h-6 text-[#d93025]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-14 h-14 bg-gradient-to-br from-[#fce7f3] to-[#fbcfe8] rounded-2xl flex items-center justify-center flex-shrink-0">
+                      <svg className="w-7 h-7 text-[#ec4899]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                       </svg>
                     </div>
                     <div>
-                      <h3 className="text-[#202124] font-medium text-lg mb-1">AI-Generated Study Guide</h3>
-                      <p className="text-[#5f6368] text-sm">
-                        A comprehensive guide generated from all uploaded class notes,
+                      <h3 className="text-[#1e293b] font-semibold text-lg mb-1">AI-Generated Study Guide</h3>
+                      <p className="text-[#64748b] text-sm leading-relaxed">
+                        A comprehensive guide generated from all uploaded class <br />notes,
                         organized by topic to help you study effectively.
                       </p>
                     </div>
@@ -1362,7 +1377,7 @@ export default function ClassroomPage() {
                     <button
                       onClick={() => generateStudyGuide()}
                       disabled={isGeneratingGuide || uploads.length === 0}
-                      className={`btn-primary flex items-center gap-2 ${isGeneratingGuide || uploads.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`btn-primary flex items-center gap-2 rounded-xl ${isGeneratingGuide || uploads.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {isGeneratingGuide ? (
                         <>
@@ -1384,16 +1399,16 @@ export default function ClassroomPage() {
                   </div>
                 </div>
                 {generateError && (
-                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  <div className="mt-4 p-4 bg-[#fef2f2] border border-[#fecaca] rounded-xl text-[#dc2626] text-sm">
                     <strong>Error:</strong> {generateError}
-                    <p className="text-xs mt-1 text-red-600">
-                      Make sure the AI service is running. In the <code className="bg-red-100 px-1 rounded">ai-service</code> directory, run: <code className="bg-red-100 px-1 rounded">start-server.bat</code> (Windows) or <code className="bg-red-100 px-1 rounded">python ai_service.py --server</code>
+                    <p className="text-xs mt-1 text-[#ef4444]">
+                      Make sure the AI service is running. In the <code className="bg-[#fee2e2] px-1.5 rounded">ai-service</code> directory, run: <code className="bg-[#fee2e2] px-1.5 rounded">start-server.bat</code> (Windows) or <code className="bg-[#fee2e2] px-1.5 rounded">python ai_service.py --server</code>
                     </p>
                   </div>
                 )}
                 {uploads.length === 0 && (
-                  <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm flex items-center gap-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="mt-4 p-4 bg-[#fffbeb] border border-[#fde68a] rounded-xl text-[#b45309] text-sm flex items-center gap-3">
+                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                     Upload some notes first before generating a study guide.
@@ -1402,13 +1417,13 @@ export default function ClassroomPage() {
               </div>
 
               {studyGuide ? (
-                <div className="card p-5">
-                  <div className="flex justify-between items-start mb-4 pb-4 border-b border-[#dadce0]">
+                <div className="bg-white rounded-2xl p-6 shadow-md">
+                  <div className="flex justify-between items-start mb-5 pb-5 border-b border-[#e2e0dc]">
                     <div>
-                      <h4 className="text-[#202124] font-medium text-lg">
+                      <h4 className="text-[#1e293b] font-semibold text-lg">
                         {studyGuide.unit_name || 'Complete Study Guide'}
                       </h4>
-                      <div className="flex items-center gap-3 mt-1 text-sm text-[#5f6368]">
+                      <div className="flex items-center gap-3 mt-2 text-sm text-[#64748b]">
                         <span>Last updated: {formatDate(studyGuide.created_at)}</span>
                         {studyGuide.metadata?.upload_count != null && (
                           <span>• {String(studyGuide.metadata.upload_count)} notes • {String(studyGuide.metadata.unit_count || 1)} units</span>
@@ -1423,7 +1438,7 @@ export default function ClassroomPage() {
                               <button
                                 onClick={saveEditedStudyGuide}
                                 disabled={isSavingGuide}
-                                className="btn-primary py-1 px-3 text-sm"
+                                className="btn-primary py-2 px-4 text-sm rounded-xl"
                               >
                                 {isSavingGuide ? 'Saving...' : 'Save'}
                               </button>
@@ -1433,7 +1448,7 @@ export default function ClassroomPage() {
                                   setEditedGuideContent('');
                                 }}
                                 disabled={isSavingGuide}
-                                className="btn-secondary py-1 px-3 text-sm"
+                                className="btn-secondary py-2 px-4 text-sm rounded-xl"
                               >
                                 Cancel
                               </button>
@@ -1444,7 +1459,7 @@ export default function ClassroomPage() {
                                 setIsEditingGuide(true);
                                 setEditedGuideContent(studyGuide.content || '');
                               }}
-                              className="btn-secondary py-1 px-3 text-sm"
+                              className="btn-secondary py-2 px-4 text-sm rounded-xl"
                             >
                               Edit
                             </button>
@@ -1453,7 +1468,7 @@ export default function ClassroomPage() {
                       )}
                       <button
                         onClick={downloadStudyGuideAsPDF}
-                        className="btn-secondary flex items-center gap-2"
+                        className="btn-secondary flex items-center gap-2 rounded-xl"
                         title="Download study guide as PDF"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1464,14 +1479,14 @@ export default function ClassroomPage() {
                     </div>
                   </div>
                   {isEditingGuide ? (
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       <textarea
                         value={editedGuideContent}
                         onChange={(e) => setEditedGuideContent(e.target.value)}
-                        className="input w-full h-80 resize-none"
+                        className="input w-full h-80 resize-none font-mono text-sm"
                         placeholder="Edit study guide content..."
                       />
-                      <p className="text-[#5f6368] text-xs">Edits are saved for the class and visible to students.</p>
+                      <p className="text-[#94a3b8] text-xs">Edits are saved for the class and visible to students.</p>
                     </div>
                   ) : (
                     <div id="study-guide-content-for-pdf">
@@ -1480,22 +1495,22 @@ export default function ClassroomPage() {
                   )}
                 </div>
               ) : (
-                <div className="card p-12 text-center">
-                  <div className="w-16 h-16 bg-[#e8f0fe] rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-white rounded-2xl p-12 text-center shadow-md">
+                  <div className="w-16 h-16 bg-gradient-to-br from-[#eff6ff] to-[#dbeafe] rounded-2xl flex items-center justify-center mx-auto mb-5">
+                    <svg className="w-8 h-8 text-[#6366f1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
                   </div>
-                  <h3 className="text-[#202124] font-medium text-lg mb-2">No study guide yet</h3>
-                  <p className="text-[#5f6368]">
+                  <h3 className="text-[#1e293b] font-semibold text-lg mb-2">No study guide yet</h3>
+                  <p className="text-[#64748b]">
                     Upload notes and click &quot;Generate Guide&quot; to create your personalized study guide!
                   </p>
                 </div>
               )}
 
               {/* Chat in study-guide channel */}
-              <div className="border-t border-[#dadce0] pt-4 mt-4">
-                <h4 className="text-[#5f6368] text-sm font-medium mb-3">Discussion</h4>
+              <div className="border-t border-[#e2e0dc] pt-5 mt-6">
+                <h4 className="text-[#64748b] text-sm font-medium mb-4">Discussion</h4>
                 {filteredMessages.map((message, index) => {
                   const isOwnMessage = message.user_id === user?.id;
                   const displayName = message.user?.display_name || user?.display_name || 'Unknown';
@@ -1503,21 +1518,21 @@ export default function ClassroomPage() {
                   return (
                     <div 
                       key={`study-msg-${message.id}-${index}`} 
-                      className="flex gap-3 mb-4 p-3 card"
+                      className={`flex gap-4 mb-4 p-4 rounded-2xl shadow-sm transition-all hover:shadow-md bg-white`}
                     >
                       <div className={`avatar flex-shrink-0 ${getAvatarColor(message.user_id)}`}>
                         {displayName[0]?.toUpperCase() || '?'}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-2">
-                          <span className="text-[#202124] font-medium">
+                          <span className="text-[#1e293b] font-semibold">
                             {isOwnMessage ? 'You' : displayName}
                           </span>
-                          <span className="text-[#5f6368] text-xs">
+                          <span className="text-[#94a3b8] text-xs">
                             {formatTime(message.created_at)}
                           </span>
                         </div>
-                        <p className="text-[#3c4043] mt-1">
+                        <p className="text-[#475569] mt-1 leading-relaxed">
                           {message.content}
                         </p>
                       </div>
@@ -1542,21 +1557,21 @@ export default function ClassroomPage() {
                     return (
                       <div
                         key={`msg-${message.id}-${index}`}
-                        className="flex gap-3 p-4 card"
+                        className={`flex gap-4 p-4 rounded-2xl shadow-sm transition-all hover:shadow-md bg-white`}
                       >
                         <div className={`avatar flex-shrink-0 ${getAvatarColor(message.user_id)}`}>
                           {displayName[0]?.toUpperCase() || '?'}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline gap-2">
-                            <span className="text-[#202124] font-medium">
+                            <span className="text-[#1e293b] font-semibold">
                               {isOwnMessage ? 'You' : displayName}
                             </span>
-                            <span className="text-[#5f6368] text-xs">
+                            <span className="text-[#94a3b8] text-xs">
                               {formatTime(message.created_at)}
                             </span>
                           </div>
-                          <p className="text-[#3c4043] mt-1">
+                          <p className="text-[#475569] mt-1 leading-relaxed">
                             {message.content}
                           </p>
                         </div>
@@ -1574,40 +1589,40 @@ export default function ClassroomPage() {
                     return (
                       <div
                         key={`upload-${upload.id}-${index}`}
-                        className="card p-4"
+                        className="bg-white rounded-2xl p-5 shadow-sm hover:shadow-md transition-all"
                       >
-                        <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 bg-[#fce8e6] rounded-lg flex items-center justify-center flex-shrink-0">
+                        <div className="flex items-start gap-4">
+                          <div className="w-11 h-11 bg-gradient-to-br from-[#fce7f3] to-[#fdf2f8] rounded-xl flex items-center justify-center flex-shrink-0">
                             {isImage ? (
-                              <svg className="w-5 h-5 text-[#d93025]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-5 h-5 text-[#ec4899]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                               </svg>
                             ) : (
-                              <svg className="w-5 h-5 text-[#d93025]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-5 h-5 text-[#ec4899]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-baseline gap-2">
-                              <span className="text-[#202124] font-medium">
+                              <span className="text-[#1e293b] font-semibold">
                                 {isOwnUpload ? 'You' : displayName}
                               </span>
-                              <span className="text-[#5f6368] text-xs">
+                              <span className="text-[#94a3b8] text-xs">
                                 {formatTime(upload.created_at)}
                               </span>
                             </div>
                             {isImage ? (
                               // Image upload - show image preview
-                              <div className="mt-2">
+                              <div className="mt-3">
                                 {upload.title && (
-                                  <div className="text-[#202124] font-medium mb-2">{upload.title}</div>
+                                  <div className="text-[#1e293b] font-medium mb-2">{upload.title}</div>
                                 )}
                                 <div className="flex justify-start">
                                   <img 
                                     src={upload.content} 
                                     alt={upload.title || 'Uploaded image'}
-                                    className="max-w-full max-h-96 rounded-lg border border-[#dadce0] object-contain cursor-pointer hover:shadow-lg transition-shadow"
+                                    className="max-w-full max-h-96 rounded-xl border border-[#e2e0dc] object-contain cursor-pointer hover:shadow-lg transition-all"
                                     loading="lazy"
                                     onClick={(e) => {
                                       // Open image in new tab on click for full view
@@ -1618,9 +1633,9 @@ export default function ClassroomPage() {
                               </div>
                             ) : (
                               // Text/PDF upload - show content
-                              <div className="mt-2">
-                                <div className="text-[#1a73e8] font-medium">{upload.title}</div>
-                                <p className="text-[#5f6368] text-sm line-clamp-3 whitespace-pre-wrap break-words mt-1">{upload.content}</p>
+                              <div className="mt-3">
+                                <div className="text-[#6366f1] font-medium">{upload.title}</div>
+                                <p className="text-[#64748b] text-sm line-clamp-3 whitespace-pre-wrap break-words mt-1 leading-relaxed">{upload.content}</p>
                               </div>
                             )}
                           </div>
@@ -1637,7 +1652,7 @@ export default function ClassroomPage() {
 
           {/* Message Input */}
           {activeChannel !== 'insights' && activeChannel !== 'announcements' && (
-            <div className="p-4 border-t border-[#dadce0] bg-white">
+            <div className="p-5 border-t border-[#e2e0dc] bg-white/80 backdrop-blur-sm">
               <div className="max-w-4xl mx-auto">
                 <div className="flex gap-3">
                   <input
@@ -1646,12 +1661,12 @@ export default function ClassroomPage() {
                     onChange={(e) => setNewMessage(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
                     placeholder={`Share with class...`}
-                    className="input flex-1"
+                    className="input flex-1 rounded-xl"
                   />
                   <button
                     onClick={sendMessage}
                     disabled={!newMessage.trim()}
-                    className="btn-primary px-6"
+                    className="btn-primary px-6 rounded-xl"
                   >
                     Post
                   </button>
@@ -1664,23 +1679,23 @@ export default function ClassroomPage() {
 
       {/* Members Panel */}
       {showMembersPanel && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex justify-end">
-          <div className="bg-white w-full max-w-md h-full shadow-2xl border-l border-[#dadce0] flex flex-col">
-            <div className="p-4 border-b border-[#dadce0] flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end">
+          <div className="bg-white w-full max-w-md h-full shadow-2xl border-l border-[#e2e0dc] flex flex-col animate-slide-in-right">
+            <div className="p-5 border-b border-[#e2e0dc] flex items-center justify-between">
               <div>
-                <div className="text-[#202124] font-medium">People</div>
-                <div className="text-[#5f6368] text-sm">Class members</div>
+                <div className="text-[#1e293b] font-semibold text-lg">People</div>
+                <div className="text-[#64748b] text-sm">Class members</div>
               </div>
               <button
                 onClick={() => setShowMembersPanel(false)}
-                className="text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4] p-2 rounded-full transition-colors"
+                className="text-[#64748b] hover:text-[#1e293b] hover:bg-[#f5f3f0] p-2 rounded-xl transition-all"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            <div className="p-4 overflow-y-auto flex-1 space-y-2">
+            <div className="p-4 overflow-y-auto flex-1 space-y-3">
               {Array.from(new Map(members.map(m => [m.id, m])).values())
                 .sort((a, b) => {
                   if (a.role === 'teacher' && b.role !== 'teacher') return -1;
@@ -1688,15 +1703,15 @@ export default function ClassroomPage() {
                   return a.display_name.localeCompare(b.display_name);
                 })
                 .map((member) => (
-                  <div key={member.id} className="card p-3 flex items-center gap-3">
+                  <div key={member.id} className="bg-white rounded-xl p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-all border border-[#f0eeeb]">
                     <div className={`avatar ${member.role === 'teacher' ? 'avatar-blue' : 'avatar-green'}`}>
                       {member.display_name.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[#202124] font-medium truncate">
+                      <div className="text-[#1e293b] font-semibold truncate">
                         {member.display_name}{member.id === user?.id ? ' (you)' : ''}
                       </div>
-                      <div className="text-[#5f6368] text-sm">
+                      <div className="text-[#64748b] text-sm">
                         {member.role === 'teacher' ? 'Teacher' : 'Student'}
                       </div>
                     </div>
@@ -1709,19 +1724,19 @@ export default function ClassroomPage() {
 
       {/* Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 overflow-hidden" onClick={() => {
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 overflow-hidden" onClick={() => {
           setShowUploadModal(false);
           stopCamera();
         }}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto overflow-x-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center p-6 border-b border-[#dadce0]">
-              <h2 className="text-[#202124] text-xl font-medium">Upload Notes</h2>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto overflow-x-hidden animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-6 border-b border-[#e2e0dc]">
+              <h2 className="text-[#1e293b] text-xl font-semibold">Upload Notes</h2>
               <button
                 onClick={() => {
                   setShowUploadModal(false);
                   stopCamera();
                 }}
-                className="text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4] p-2 rounded-full transition-colors"
+                className="text-[#64748b] hover:text-[#1e293b] hover:bg-[#f5f3f0] p-2 rounded-xl transition-all"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1731,7 +1746,7 @@ export default function ClassroomPage() {
             
             <div className="p-6">
               {/* Mode Tabs */}
-              <div className="flex gap-2 mb-6 border-b border-[#dadce0]">
+              <div className="flex gap-2 mb-6 border-b border-[#e2e0dc]">
                 <button
                   onClick={() => {
                     setUploadMode('text');
@@ -1761,15 +1776,15 @@ export default function ClassroomPage() {
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {/* Title Input */}
                 <div>
-                  <label className="block text-[#5f6368] text-sm font-medium mb-2">Title</label>
+                  <label className="block text-[#64748b] text-sm font-medium mb-2">Title</label>
                   <input
                     type="text"
                     value={uploadTitle}
                     onChange={(e) => setUploadTitle(e.target.value)}
-                    className="input w-full"
+                    className="input w-full rounded-xl"
                     placeholder="e.g., Chapter 5 Notes - Cell Division"
                   />
                 </div>
@@ -1777,11 +1792,11 @@ export default function ClassroomPage() {
               {/* Text Mode */}
               {uploadMode === 'text' && (
                 <div>
-                  <label className="block text-[#5f6368] text-sm font-medium mb-2">Content</label>
+                  <label className="block text-[#64748b] text-sm font-medium mb-2">Content</label>
                   <textarea
                     value={uploadContent}
                     onChange={(e) => setUploadContent(e.target.value)}
-                    className="input w-full h-48 resize-none"
+                    className="input w-full h-48 resize-none rounded-xl"
                     placeholder="Paste your notes here..."
                   />
                 </div>
@@ -1790,8 +1805,8 @@ export default function ClassroomPage() {
               {/* File Mode */}
               {uploadMode === 'file' && (
                 <div>
-                  <label className="block text-[#5f6368] text-sm font-medium mb-2">Upload File</label>
-                  <div className="border-2 border-dashed border-[#dadce0] rounded-lg p-8 text-center hover:border-[#1a73e8] hover:bg-[#f8f9fa] transition-colors">
+                  <label className="block text-[#64748b] text-sm font-medium mb-2">Upload File</label>
+                  <div className="border-2 border-dashed border-[#e2e0dc] rounded-2xl p-8 text-center hover:border-[#6366f1] hover:bg-[#faf8f5] transition-all">
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -1806,41 +1821,41 @@ export default function ClassroomPage() {
                     />
                     {!selectedFile ? (
                       <div>
-                        <div className="w-16 h-16 bg-[#e8f0fe] rounded-full flex items-center justify-center mx-auto mb-4">
-                          <svg className="w-8 h-8 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="w-16 h-16 bg-gradient-to-br from-[#eff6ff] to-[#dbeafe] rounded-2xl flex items-center justify-center mx-auto mb-4">
+                          <svg className="w-8 h-8 text-[#6366f1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                           </svg>
                         </div>
-                        <p className="text-[#5f6368] text-sm mb-3">
+                        <p className="text-[#64748b] text-sm mb-3">
                           Drag and drop a file here, or click to select
                         </p>
                         <button
                           onClick={() => fileInputRef.current?.click()}
-                          className="btn-primary"
+                          className="btn-primary rounded-xl"
                         >
                           Choose File
                         </button>
-                        <p className="text-[#80868b] text-xs mt-3">
+                        <p className="text-[#94a3b8] text-xs mt-3">
                           Supports: Images (JPG, PNG), PDFs, Text files
                         </p>
                       </div>
                     ) : (
                       <div>
-                        <div className="w-16 h-16 bg-[#e6f4ea] rounded-full flex items-center justify-center mx-auto mb-4">
-                          <svg className="w-8 h-8 text-[#1e8e3e]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="w-16 h-16 bg-gradient-to-br from-[#dcfce7] to-[#d1fae5] rounded-2xl flex items-center justify-center mx-auto mb-4">
+                          <svg className="w-8 h-8 text-[#22c55e]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
                         </div>
-                        <div className="text-[#1e8e3e] font-medium mb-2">{selectedFile.name}</div>
+                        <div className="text-[#22c55e] font-semibold mb-2">{selectedFile.name}</div>
                         {isProcessingFile ? (
-                          <div className="text-[#5f6368] text-sm">Processing file...</div>
+                          <div className="text-[#64748b] text-sm">Processing file...</div>
                         ) : (
                           <button
                             onClick={() => {
                               setSelectedFile(null);
                               setUploadContent('');
                             }}
-                            className="text-[#d93025] text-sm hover:underline"
+                            className="text-[#ef4444] text-sm hover:underline font-medium"
                           >
                             Remove file
                           </button>
@@ -1850,21 +1865,21 @@ export default function ClassroomPage() {
                   </div>
                   {uploadContent && uploadContent.startsWith('data:image/') ? (
                     <div className="mt-4">
-                      <label className="block text-[#5f6368] text-sm font-medium mb-2">Image Preview</label>
+                      <label className="block text-[#64748b] text-sm font-medium mb-2">Image Preview</label>
                       <img 
                         src={uploadContent} 
                         alt="Upload preview" 
-                        className="max-w-full max-h-64 rounded-lg border border-[#dadce0]"
+                        className="max-w-full max-h-64 rounded-xl border border-[#e2e0dc]"
                       />
-                      <p className="text-[#80868b] text-xs mt-2">Image will be sent directly to the LLM for processing</p>
+                      <p className="text-[#94a3b8] text-xs mt-2">Image will be sent directly to the LLM for processing</p>
                     </div>
                   ) : uploadContent ? (
                     <div className="mt-4">
-                      <label className="block text-[#5f6368] text-sm font-medium mb-2">Content</label>
+                      <label className="block text-[#64748b] text-sm font-medium mb-2">Content</label>
                       <textarea
                         value={uploadContent}
                         onChange={(e) => setUploadContent(e.target.value)}
-                        className="input w-full h-48 resize-none"
+                        className="input w-full h-48 resize-none rounded-xl"
                         placeholder="Content will appear here after processing..."
                       />
                     </div>
@@ -1875,9 +1890,9 @@ export default function ClassroomPage() {
               {/* Camera Mode */}
               {uploadMode === 'camera' && (
                 <div>
-                  <label className="block text-[#5f6368] text-sm font-medium mb-2">Take Photo</label>
+                  <label className="block text-[#64748b] text-sm font-medium mb-2">Take Photo</label>
                   {!capturedImage ? (
-                    <div className="border-2 border-[#dadce0] rounded-lg overflow-hidden">
+                    <div className="border-2 border-[#e2e0dc] rounded-2xl overflow-hidden">
                       {cameraStream ? (
                         <div className="relative">
                           <video
@@ -1889,16 +1904,16 @@ export default function ClassroomPage() {
                           <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
                             <button
                               onClick={capturePhoto}
-                              className="bg-white rounded-full p-4 shadow-lg hover:bg-gray-100 transition"
+                              className="bg-white rounded-2xl p-4 shadow-lg hover:bg-[#f5f3f0] transition-all"
                             >
-                              <svg className="w-8 h-8 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-8 h-8 text-[#6366f1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                               </svg>
                             </button>
                             <button
                               onClick={stopCamera}
-                              className="bg-white text-[#d93025] px-4 py-2 rounded-lg shadow-lg hover:bg-gray-100 transition font-medium"
+                              className="bg-white text-[#ef4444] px-4 py-2 rounded-xl shadow-lg hover:bg-[#f5f3f0] transition-all font-medium"
                             >
                               Cancel
                             </button>
@@ -1906,18 +1921,18 @@ export default function ClassroomPage() {
                         </div>
                       ) : (
                         <div className="p-8 text-center">
-                          <div className="w-16 h-16 bg-[#e8f0fe] rounded-full flex items-center justify-center mx-auto mb-4">
-                            <svg className="w-8 h-8 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="w-16 h-16 bg-gradient-to-br from-[#eff6ff] to-[#dbeafe] rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8 text-[#6366f1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
                           </div>
-                          <p className="text-[#5f6368] text-sm mb-3">
+                          <p className="text-[#64748b] text-sm mb-3">
                             Camera access needed to take photos
                           </p>
                           <button
                             onClick={startCamera}
-                            className="btn-primary"
+                            className="btn-primary rounded-xl"
                           >
                             Start Camera
                           </button>
@@ -1929,10 +1944,10 @@ export default function ClassroomPage() {
                       <img
                         src={capturedImage}
                         alt="Captured"
-                        className="w-full max-h-96 object-contain rounded-lg mb-4 border border-[#dadce0]"
+                        className="w-full max-h-96 object-contain rounded-2xl mb-4 border border-[#e2e0dc]"
                       />
                       {isProcessingFile ? (
-                        <div className="text-[#5f6368] text-sm text-center">Processing image...</div>
+                        <div className="text-[#64748b] text-sm text-center">Processing image...</div>
                       ) : (
                         <div className="flex gap-2">
                           <button
@@ -1941,7 +1956,7 @@ export default function ClassroomPage() {
                               setUploadContent('');
                               startCamera();
                             }}
-                            className="btn-secondary flex-1"
+                            className="btn-secondary flex-1 rounded-xl"
                           >
                             Retake
                           </button>
@@ -1949,13 +1964,13 @@ export default function ClassroomPage() {
                       )}
                       {uploadContent && uploadContent.startsWith('data:image/') && (
                         <div className="mt-4">
-                          <label className="block text-[#5f6368] text-sm font-medium mb-2">Image Preview</label>
+                          <label className="block text-[#64748b] text-sm font-medium mb-2">Image Preview</label>
                           <img 
                             src={uploadContent} 
                             alt="Captured photo" 
-                            className="max-w-full max-h-64 rounded-lg border border-[#dadce0]"
+                            className="max-w-full max-h-64 rounded-xl border border-[#e2e0dc]"
                           />
-                          <p className="text-[#80868b] text-xs mt-2">Image will be sent directly to the LLM for processing</p>
+                          <p className="text-[#94a3b8] text-xs mt-2">Image will be sent directly to the LLM for processing</p>
                         </div>
                       )}
                     </div>
@@ -1966,20 +1981,20 @@ export default function ClassroomPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 p-6 border-t border-[#dadce0] bg-[#f8f9fa]">
+            <div className="flex gap-3 p-6 border-t border-[#e2e0dc] bg-[#faf8f5]">
               <button
                 onClick={() => {
                   setShowUploadModal(false);
                   stopCamera();
                 }}
-                className="btn-secondary flex-1"
+                className="btn-secondary flex-1 rounded-xl"
               >
                 Cancel
               </button>
               <button
                 onClick={submitUpload}
                 disabled={!uploadTitle.trim() || !uploadContent.trim() || isProcessingFile}
-                className="btn-primary flex-1"
+                className="btn-primary flex-1 rounded-xl"
               >
                 {isProcessingFile ? 'Processing...' : 'Upload'}
               </button>
@@ -1992,40 +2007,40 @@ export default function ClassroomPage() {
       {announcementNotification && (
         <div className="fixed bottom-4 right-4 z-50 animate-slide-in-right">
           <div 
-            className="bg-white border-l-4 border-[#1a73e8] rounded-lg shadow-xl p-4 max-w-sm cursor-pointer hover:shadow-2xl transition-shadow"
+            className="bg-white border-l-4 border-[#6366f1] rounded-2xl shadow-xl p-5 max-w-sm cursor-pointer hover:shadow-2xl transition-all"
             onClick={() => {
               setActiveChannel('announcements');
               setAnnouncementNotification(null);
             }}
           >
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 bg-[#e8f0fe] rounded-full flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-[#1a73e8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 bg-gradient-to-br from-[#eff6ff] to-[#dbeafe] rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-[#6366f1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
                 </svg>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[#1a73e8] font-medium text-sm">New Announcement</span>
+                  <span className="text-[#6366f1] font-semibold text-sm">New Announcement</span>
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
                       setAnnouncementNotification(null);
                     }}
-                    className="text-[#5f6368] hover:text-[#202124] hover:bg-[#f1f3f4] p-1 rounded-full transition-colors"
+                    className="text-[#64748b] hover:text-[#1e293b] hover:bg-[#f5f3f0] p-1.5 rounded-lg transition-all"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
-                <h4 className="text-[#202124] font-medium mt-1 truncate">
+                <h4 className="text-[#1e293b] font-semibold mt-1 truncate">
                   {announcementNotification.title}
                 </h4>
-                <p className="text-[#5f6368] text-sm mt-0.5 line-clamp-2">
+                <p className="text-[#64748b] text-sm mt-0.5 line-clamp-2 leading-relaxed">
                   {announcementNotification.content}
                 </p>
-                <p className="text-[#1a73e8] text-xs mt-2 font-medium">Click to view</p>
+                <p className="text-[#6366f1] text-xs mt-2 font-medium">Click to view</p>
               </div>
             </div>
           </div>
