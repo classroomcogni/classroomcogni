@@ -133,7 +133,7 @@ export default function ClassroomPage() {
   }, [classroomId]);
 
   // AI Service URL - can be configured via environment variable
-  const AI_SERVICE_URL = process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:5000';
+  const AI_SERVICE_URL = (process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
   const generateStudyGuide = useCallback(async () => {
     console.log("Generating study guide");
