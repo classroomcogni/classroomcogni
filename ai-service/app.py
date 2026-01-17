@@ -792,14 +792,14 @@ def process_all_classrooms():
 # HTTP Server for Frontend Integration
 # ============================================================
 
-def run_server():
-    """Run the AI service as an HTTP server."""
+def create_app():
+    """Create the Flask app (WSGI entrypoint for serverless)."""
     from flask import Flask, request, jsonify
     from flask_cors import CORS
-    
+
     app = Flask(__name__)
     CORS(app)  # Enable CORS for frontend requests
-    
+
     @app.route('/health', methods=['GET'])
     def health():
         return jsonify({
@@ -807,7 +807,7 @@ def run_server():
             'provider': AI_PROVIDER,
             'model': GEMINI_MODEL if AI_PROVIDER == 'gemini' else OPENAI_MODEL
         })
-    
+
     @app.route('/generate', methods=['POST'])
     def generate():
         """Generate both study guide and insights for a classroom (legacy endpoint)."""
@@ -815,45 +815,54 @@ def run_server():
             data = request.get_json()
             classroom_id = data.get('classroom_id')
             force = data.get('force', False)
-            
+
             if not classroom_id:
                 return jsonify({'success': False, 'error': 'classroom_id is required'}), 400
-            
+
             result = process_classroom(classroom_id, force_regenerate=force)
             return jsonify(result)
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/generate-study-guide', methods=['POST'])
     def generate_study_guide_endpoint():
         """Generate only the study guide for a classroom (no insights)."""
         try:
             data = request.get_json()
             classroom_id = data.get('classroom_id')
-            
+
             if not classroom_id:
                 return jsonify({'success': False, 'error': 'classroom_id is required'}), 400
-            
+
             result = process_study_guide_only(classroom_id)
             return jsonify(result)
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/generate-insights', methods=['POST'])
     def generate_insights_endpoint():
         """Generate only the confusion insights for a classroom (no study guide)."""
         try:
             data = request.get_json()
             classroom_id = data.get('classroom_id')
-            
+
             if not classroom_id:
                 return jsonify({'success': False, 'error': 'classroom_id is required'}), 400
-            
+
             result = process_insights_only(classroom_id)
             return jsonify(result)
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
+    return app
+
+
+# WSGI app for serverless platforms (e.g., Vercel)
+app = create_app()
+
+
+def run_server():
+    """Run the AI service as an HTTP server."""
     provider_info = get_ai_provider_info()
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
@@ -870,7 +879,7 @@ def run_server():
 ║  Server running on port {SERVER_PORT}                              ║
 ╚═══════════════════════════════════════════════════════════════╝
     """)
-    
+
     app.run(host='0.0.0.0', port=SERVER_PORT, debug=False)
 
 
