@@ -14,42 +14,110 @@ interface InsightsDashboardProps {
 const COLORS = ['#f472b6', '#6366f1', '#22c55e', '#f59e0b', '#06b6d4'];
 
 export default function InsightsDashboard({ messages, uploads, insights, members }: InsightsDashboardProps) {
-  // Use mock data for insights (UI demo)
   const processedData = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    const totalMessages = messages.length;
+    const totalUploads = uploads.length;
+    const totalStudents = members.filter((m) => m.role === 'student').length;
+
+    const memberRoleById = new Map(members.map((m) => [m.id, m.role] as const));
+    const activeStudentIds = new Set(
+      messages
+        .filter((m) => (m.user?.role || memberRoleById.get(m.user_id)) === 'student')
+        .map((m) => m.user_id)
+    );
+    const activeStudents = activeStudentIds.size;
+
+    const last7Start = new Date(startOfToday.getTime() - 6 * dayMs);
+    const prev7Start = new Date(startOfToday.getTime() - 13 * dayMs);
+    const prev7End = new Date(startOfToday.getTime() - 7 * dayMs);
+
+    const messagesLast7 = messages.filter((m) => new Date(m.created_at) >= last7Start);
+    const messagesPrev7 = messages.filter(
+      (m) => new Date(m.created_at) >= prev7Start && new Date(m.created_at) < prev7End
+    );
+
+    const messageChange = messagesPrev7.length === 0
+      ? (messagesLast7.length > 0 ? 100 : 0)
+      : Math.round(((messagesLast7.length - messagesPrev7.length) / messagesPrev7.length) * 100);
+
+    const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const chatActivity = Array.from({ length: 7 }).map((_, idx) => {
+      const date = new Date(last7Start.getTime() + idx * dayMs);
+      const label = dayLabels[date.getDay()];
+      const count = messagesLast7.filter((m) => {
+        const d = new Date(m.created_at);
+        return d.getFullYear() === date.getFullYear() && d.getMonth() === date.getMonth() && d.getDate() === date.getDate();
+      }).length;
+      return { day: label, messages: count };
+    });
+
+    const hourBuckets = [
+      { label: '12am', start: 0 },
+      { label: '4am', start: 4 },
+      { label: '8am', start: 8 },
+      { label: '12pm', start: 12 },
+      { label: '4pm', start: 16 },
+      { label: '8pm', start: 20 },
+    ];
+
+    const activityByHour = hourBuckets.map((bucket) => {
+      const end = (bucket.start + 4) % 24;
+      const count = messages.filter((m) => {
+        const hour = new Date(m.created_at).getHours();
+        if (bucket.start < end) {
+          return hour >= bucket.start && hour < end;
+        }
+        return hour >= bucket.start || hour < end;
+      }).length;
+      return { hour: bucket.label, activity: count, hourNum: bucket.start };
+    });
+
+    const unitStruggles: Array<{ name: string; students: number; percentage: number }> = [];
+    insights
+      .filter((i) => i.insight_type === 'unit_cluster' || i.insight_type === 'confusion_summary')
+      .forEach((insight) => {
+        const metadata = insight.metadata as Record<string, unknown> | null;
+        const units = (metadata?.units || metadata?.unit_struggles) as Array<Record<string, unknown>> | undefined;
+        if (Array.isArray(units)) {
+          units.forEach((unit) => {
+            const name = String(unit.name || unit.unit || insight.unit_name || 'Unit');
+            const students = Number(unit.students || unit.count || 0);
+            const percentage = Number(unit.percentage || 0);
+            unitStruggles.push({ name, students, percentage });
+          });
+        } else if (insight.unit_name) {
+          const students = Number((metadata as any)?.students || (metadata as any)?.count || 0);
+          const percentage = Number((metadata as any)?.percentage || 0);
+          unitStruggles.push({ name: insight.unit_name, students, percentage });
+        }
+      });
+
+    const maxStruggleUnit = unitStruggles.length > 0
+      ? unitStruggles.reduce((max, u) => (u.percentage > max.percentage ? u : max))
+      : null;
+    const minStruggleUnit = unitStruggles.length > 0
+      ? unitStruggles.reduce((min, u) => (u.percentage < min.percentage ? u : min))
+      : null;
+    const peakHour = activityByHour.reduce((max, h) => (h.activity > max.activity ? h : max), activityByHour[0]);
+
     return {
-      totalMessages: 128,
-      activeStudents: 18,
-      totalUploads: 24,
-      chatActivity: [
-        { day: 'Mon', messages: 18 },
-        { day: 'Tue', messages: 22 },
-        { day: 'Wed', messages: 26 },
-        { day: 'Thu', messages: 20 },
-        { day: 'Fri', messages: 15 },
-        { day: 'Sat', messages: 10 },
-        { day: 'Sun', messages: 17 },
-      ],
-      activityByHour: [
-        { hour: '8am', activity: 2, hourNum: 8 },
-        { hour: '10am', activity: 8, hourNum: 10 },
-        { hour: '12pm', activity: 12, hourNum: 12 },
-        { hour: '2pm', activity: 15, hourNum: 14 },
-        { hour: '4pm', activity: 20, hourNum: 16 },
-        { hour: '6pm', activity: 10, hourNum: 18 },
-      ],
-      unitStruggles: [
-        { name: 'Unit 1: Functions', students: 6, percentage: 33 },
-        { name: 'Unit 2: Derivatives', students: 8, percentage: 44 },
-        { name: 'Unit 3: Integrals', students: 5, percentage: 28 },
-        { name: 'Unit 4: Series', students: 3, percentage: 17 },
-      ],
-      messageChange: 12,
-      maxStruggleUnit: { name: 'Unit 2: Derivatives', students: 8, percentage: 44 },
-      minStruggleUnit: { name: 'Unit 4: Series', students: 3, percentage: 17 },
-      peakHour: { hour: '4pm', activity: 20 },
-      totalStudents: 24,
+      totalMessages,
+      activeStudents,
+      totalUploads,
+      chatActivity,
+      activityByHour,
+      unitStruggles,
+      messageChange,
+      maxStruggleUnit,
+      minStruggleUnit,
+      peakHour,
+      totalStudents,
     };
-  }, []);
+  }, [messages, uploads, insights, members]);
   
   const {
     totalMessages,

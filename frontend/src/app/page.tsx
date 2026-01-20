@@ -39,13 +39,13 @@ export default function Home() {
         <div className="flex gap-3">
           <Link 
             href="/login" 
-            className="text-[#64748b] hover:text-[#1e293b] px-5 py-2.5 rounded-xl hover:bg-[#f0eeea] transition-all font-medium"
+            className="text-[#64748b] px-5 py-2.5 rounded-xl font-medium hover-surface"
           >
             Sign In
           </Link>
           <Link 
             href="/signup" 
-            className="bg-gradient-to-r from-[#6366f1] to-[#818cf8] text-white px-5 py-2.5 rounded-xl hover:shadow-lg hover:shadow-indigo-200 transition-all font-medium"
+            className="bg-gradient-to-r from-[#6366f1] to-[#818cf8] text-white px-5 py-2.5 rounded-xl font-medium hover-card"
           >
             Get Started
           </Link>
@@ -72,13 +72,13 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
             <Link 
               href="/signup" 
-              className="bg-gradient-to-r from-[#6366f1] to-[#818cf8] text-white px-8 py-4 rounded-2xl text-lg font-semibold hover:shadow-xl hover:shadow-indigo-200 transition-all hover:-translate-y-0.5"
+              className="bg-gradient-to-r from-[#6366f1] to-[#818cf8] text-white px-8 py-4 rounded-2xl text-lg font-semibold hover-card"
             >
               Start Learning Together
             </Link>
             <Link
               href="/login"
-              className="bg-white text-[#1e293b] px-8 py-4 rounded-2xl text-lg font-semibold border-2 border-[#e2e0dc] hover:border-[#6366f1] hover:text-[#6366f1] transition-all"
+              className="bg-white text-[#1e293b] px-8 py-4 rounded-2xl text-lg font-semibold border-2 border-[#e2e0dc] hover-outline"
             >
               Sign In
             </Link>
@@ -87,8 +87,8 @@ export default function Home() {
 
         {/* Features */}
         <div className="grid md:grid-cols-3 gap-6 max-w-5xl mt-4 w-full">
-          <div className="bg-white p-8 rounded-3xl shadow-md hover:shadow-xl transition-all hover:-translate-y-1 group">
-            <div className="w-14 h-14 bg-gradient-to-br from-[#fef3c7] to-[#fde68a] rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+          <div className="bg-white p-8 rounded-3xl shadow-md hover-card">
+            <div className="w-14 h-14 bg-gradient-to-br from-[#fef3c7] to-[#fde68a] rounded-2xl flex items-center justify-center mb-5 hover-scale">
               <span className="text-2xl">💬</span>
             </div>
             <h3 className="text-[#1e293b] font-semibold text-lg mb-3">Natural Chat</h3>
@@ -96,8 +96,8 @@ export default function Home() {
               Students chat and share notes naturally. No awkward interfaces — just conversation.
             </p>
           </div>
-          <div className="bg-white p-8 rounded-3xl shadow-md hover:shadow-xl transition-all hover:-translate-y-1 group">
-            <div className="w-14 h-14 bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+          <div className="bg-white p-8 rounded-3xl shadow-md hover-card">
+            <div className="w-14 h-14 bg-gradient-to-br from-[#dbeafe] to-[#bfdbfe] rounded-2xl flex items-center justify-center mb-5 hover-scale">
               <span className="text-2xl">🤖</span>
             </div>
             <h3 className="text-[#1e293b] font-semibold text-lg mb-3">Invisible AI</h3>
@@ -105,8 +105,8 @@ export default function Home() {
               AI works quietly in the background to organize content and generate helpful study guides.
             </p>
           </div>
-          <div className="bg-white p-8 rounded-3xl shadow-md hover:shadow-xl transition-all hover:-translate-y-1 group">
-            <div className="w-14 h-14 bg-gradient-to-br from-[#fce7f3] to-[#fbcfe8] rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+          <div className="bg-white p-8 rounded-3xl shadow-md hover-card">
+            <div className="w-14 h-14 bg-gradient-to-br from-[#fce7f3] to-[#fbcfe8] rounded-2xl flex items-center justify-center mb-5 hover-scale">
               <span className="text-2xl">🔒</span>
             </div>
             <h3 className="text-[#1e293b] font-semibold text-lg mb-3">Privacy First</h3>

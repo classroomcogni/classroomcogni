@@ -210,7 +210,7 @@ export default function DashboardPage() {
           </div>
           <button
             onClick={signOut}
-            className="text-[#64748b] hover:text-[#1e293b] text-sm font-medium hover:bg-[#f0eeea] px-4 py-2.5 rounded-xl transition-all"
+            className="text-[#64748b] text-sm font-medium px-4 py-2.5 rounded-xl hover-surface"
           >
             Sign Out
           </button>
@@ -284,7 +284,7 @@ export default function DashboardPage() {
                   }
                   router.push(`/classroom/${classroom.id}`);
                 }}
-                className="bg-white rounded-3xl cursor-pointer hover:shadow-xl transition-all hover:-translate-y-1 overflow-hidden group"
+                className="bg-white rounded-3xl cursor-pointer overflow-hidden group hover-card"
               >
                 {/* Colored header with gradient */}
                 <div className={`bg-gradient-to-br ${getCardColor(index)} h-28 p-5 flex items-end`}>

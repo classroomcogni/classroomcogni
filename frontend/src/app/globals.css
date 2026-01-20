@@ -331,6 +331,42 @@ button, a, input, textarea, select {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Fallback hover utilities when Tailwind hover variants are unavailable */
+.hover-card {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.hover-surface {
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-surface:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.hover-outline {
+  transition: border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-outline:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.hover-scale {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-card:hover .hover-scale {
+  transform: scale(1.1);
+}
+
 /* Toast notification styles */
 .toast {
   background: var(--surface);
